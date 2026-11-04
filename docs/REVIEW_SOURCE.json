@@ -1,0 +1,131 @@
+{
+  "project": "Review",
+  "gitHead": "a859804654bfcfbfb1c34ed7217b722c7422021f",
+  "version": "3.14.0+238",
+  "date": "2026-11-03",
+  "note": "Relevant UI files clean at extraction; adapted component code is maintained in GreenMusic; 1.0.1 adds Review settings, backup workflow and bundled glass dependency; hashes describe original Review files, not modified GreenMusic copies.",
+  "files": [
+    {
+      "path": "lib/core/theme/app_theme.dart",
+      "sha256": "2a10a7ed5843c1538b1e3319629f78058399adfa871b0b4913618bc29a1dfb0e"
+    },
+    {
+      "path": "lib/core/design_system/components/review_navigation_bar.dart",
+      "sha256": "a82288895f0bbe2189387e5d1f3e315682e264ba29399c71c5e9dad1251482b7"
+    },
+    {
+      "path": "lib/core/design_system/components/review_frosted_app_bar.dart",
+      "sha256": "ddf9dc2bfb6577ed90c9f960cb5f203aae9a6fb79aeec40d217a1a8583a4d358"
+    },
+    {
+      "path": "lib/core/design_system/components/review_card.dart",
+      "sha256": "ba3f465b4beeb7a4ad64ba46ba8b5f647312d9d07280a6a54abab1838e57e96f"
+    },
+    {
+      "path": "lib/core/design_system/components/review_page_scaffold.dart",
+      "sha256": "7fed22c3d3827df646e180499449034800bd1d1ff5a1485d1f3ee1cfa6c0929a"
+    },
+    {
+      "path": "lib/core/design_system/components/review_preference_tile.dart",
+      "sha256": "a237cd575265be83242005a70b7d95ae78df18310b0b9939bb2470375c0e772c"
+    },
+    {
+      "path": "lib/core/design_system/components/review_switch_tile.dart",
+      "sha256": "6ae3593496ad1533e494fc15bd5e9857b32c74a0897ff3dadd406ee27490dbab"
+    },
+    {
+      "path": "lib/core/design_system/components/review_choice_tile.dart",
+      "sha256": "bc666fd17a4037f234d8cd570217c07472774e074dad65b79cbbaf2c78cb3095"
+    },
+    {
+      "path": "lib/core/utils/haptic_feedback_util.dart",
+      "sha256": "9cdfcbd2f1fa272b95b2f9a857bdc1b7c17787cb39d76faf42da825ba8fbea12"
+    },
+    {
+      "path": "lib/core/utils/app_toast.dart",
+      "sha256": "f224a658e6371f59b0d23b3800633ee3d09a0d7abdff73038348cf48ed84365d"
+    },
+    {
+      "path": "lib/core/utils/app_dialog.dart",
+      "sha256": "4c887d5bc939d911c2d16021c6edc518bae315ba334b6948bd3fe7a6c20f6844"
+    },
+    {
+      "path": "lib/core/widgets/app_section_card.dart",
+      "sha256": "78991dbb20ec2e393fdbcb91794fbaa6517e06fd0daa5fd71d1bd4c9f48e2b58"
+    },
+    {
+      "path": "lib/features/home/presentation/main_scaffold.dart",
+      "sha256": "5639b02dc718281033127efe152b5f1e62ff899cc233c4c52b1a8a43e36168ff"
+    },
+    {
+      "path": "lib/core/theme/app_text_scaler.dart",
+      "sha256": "c2626b787da815f46ac02370595fe3d35279dc1b9eae177badaf99d04bfddcba",
+      "usage": "1.0.1 direct reuse or music-specific adaptation"
+    },
+    {
+      "path": "lib/core/theme/custom_app_icon_provider.dart",
+      "sha256": "5ec8ba2ee42b5d7e9936ef9e886814144493d0d622ef6b3c71a4d4725f73e8e8",
+      "usage": "1.0.1 direct reuse or music-specific adaptation"
+    },
+    {
+      "path": "lib/features/profile/presentation/theme_settings_page.dart",
+      "sha256": "c73ac79f18d159d4749bcfc43d02c0b5485bb88e9bf8b3b965fb64ceaa9f5cf0",
+      "usage": "1.0.1 direct reuse or music-specific adaptation"
+    },
+    {
+      "path": "lib/features/profile/presentation/custom_app_icon_page.dart",
+      "sha256": "d4180e48b28df81468c68ca93d8fb1adba77dbfdd1110fc8d147308fd2b47ecc",
+      "usage": "1.0.1 direct reuse or music-specific adaptation"
+    },
+    {
+      "path": "lib/features/profile/presentation/screen_refresh_rate_page.dart",
+      "sha256": "5ccbe6fb7ec9be75bb6fea63715f09d00cb18bffdafe90a6210c9cd05496ce9d",
+      "usage": "1.0.1 direct reuse or music-specific adaptation"
+    },
+    {
+      "path": "lib/features/settings/presentation/webdav_backup_page.dart",
+      "sha256": "a4b82f2fc0cc2413f980ef20334b65066096ae42a071ad4ee93165ab2b183ddb",
+      "usage": "1.0.1 direct reuse or music-specific adaptation"
+    },
+    {
+      "path": "lib/features/settings/presentation/storage_settings_page.dart",
+      "sha256": "cb6442782c85e877d34a635746a3ac1b283ed124110fe43f1da33ea1db7a66bd",
+      "usage": "1.0.1 direct reuse or music-specific adaptation"
+    },
+    {
+      "path": "lib/core/services/webdav_service.dart",
+      "sha256": "95eb1587a39e40da2d904c5ae9d418d1d0a670e0d9c1d795db13f3974b6405c8",
+      "usage": "1.0.1 direct reuse or music-specific adaptation"
+    },
+    {
+      "path": "lib/core/storage/storage_service.dart",
+      "sha256": "3b5545f182bd0ee8fb486d6ddc3e014f45478c3166f766ccea3ff7d8639fa29d",
+      "usage": "1.0.1 direct reuse or music-specific adaptation"
+    },
+    {
+      "path": "packages/liquid_glass_widgets/pubspec.yaml",
+      "sha256": "649d2af21977436b19bb4c3cc27670a9f4e98abba37cfd73e139d28eef885f1b",
+      "usage": "1.0.1 direct reuse or music-specific adaptation"
+    },
+    {
+      "path": "packages/liquid_glass_widgets/lib/src/engine/shaders.dart",
+      "sha256": "462901998d56e17b24917184aa8759e1c0f129ad6622d31a1d5f8b7e5d603729",
+      "usage": "1.0.1 direct reuse or music-specific adaptation"
+    },
+    {
+      "path": "packages/liquid_glass_widgets/LICENSE",
+      "sha256": "bd51c3772db92289b777325bbb19583f10d7fece48b956667db0b826237c46a0",
+      "usage": "1.0.1 direct reuse or music-specific adaptation"
+    },
+    {
+      "path": "lib/features/settings/presentation/settings_view.dart",
+      "sha256": "f53c4a3498c825f2e0a9fa8842f89973afc7369d99cceda4a107f16078b83cc4",
+      "usage": "settings grouping and storage/cache UI reference, adapted to music"
+    },
+    {
+      "path": "lib/features/settings/presentation/cache_management_page.dart",
+      "sha256": "59a3379daea33670ab9fea543222e165a8850fae19da0a829770a4b1b3539e52",
+      "usage": "settings grouping and storage/cache UI reference, adapted to music"
+    }
+  ]
+}
