@@ -1,6 +1,0 @@
-# Copy to key.properties and fill in your own signing configuration.
-storeFile=../.local/signing/release.p12
-storeType=PKCS12
-storePassword=CHANGE_ME
-keyAlias=release
-keyPassword=CHANGE_ME

@@ -1,32 +1,11 @@
-# 构建与检查
+# 构建 GreenMusic
 
-项目为Flutter Android客户端，Flutter和Dart版本要求见根目录的pubspec.yaml。Android构建使用JDK 17，SDK、NDK和Gradle版本由Flutter及android目录中的配置决定。
+正式工程在 `compose/`。用 Android Studio 打开该目录，或在仓库根运行下列命令。需要 JDK 17、Android SDK 36 和 Build Tools 37。
 
-## 依赖
-
-```shell
-flutter pub get
+```powershell
+.\compose\gradlew.bat -p compose :app:testReleaseUnitTest :app:lintRelease :app:assembleRelease --console=plain
 ```
 
-packages/liquid_glass_widgets是随项目提供的本地依赖，需完整保留。vendor_reference/lilt为协议来源的参考快照，不参与Flutter构建。
+仅构建 arm64-v8a。没有签名配置时，Release 输出 `compose/app/build/outputs/apk/release/app-release-unsigned.apk`，可用于检查构建产物。
 
-## Android签名与APK
-
-将android/key.properties.example复制为android/key.properties，填写自己的密钥文件位置、别名和口令。示例的storeFile相对于android目录；发布私钥和实际签名配置不随源码提供，也不应提交到仓库。
-
-```shell
-flutter build apk --release --target-platform android-arm64
-```
-
-应用包名为com.green.music，仅构建arm64-v8a。APK输出位于build/app/outputs/flutter-apk/app-release.apk。Flutter会按需生成本机SDK路径配置和Gradle wrapper文件。
-
-## 自动检查
-
-```shell
-flutter analyze
-flutter test --concurrency 2
-```
-
-测试缓存写入当前项目的.local目录。需要真实服务的测试按其显式开关启用；自动化检查不能替代QQ账号登录、真实音频、系统通知和目录授权的设备验收。
-
-项目使用AGPL-3.0，第三方来源及许可见根目录THIRD_PARTY_NOTICES.md、LICENSE和相关依赖的许可文件。
+正式发布使用原发布签名。签名配置位于本机忽略目录 `.local/signing/key.properties`，配置键为 `storeFile`、`storeType`、`storePassword`、`keyAlias` 和 `keyPassword`，密钥相对同一目录解析。签名输出为 `compose/app/build/outputs/apk/release/app-release.apk`。核验签名、版本、ABI 和 16 KB 对齐后，交付仓库根目录的 `GreenMusic_v1.2.13_arm64.apk`。
