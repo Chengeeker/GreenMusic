@@ -32,7 +32,7 @@ class AppSettings(context: Context) {
     fun string(key: String, default: String = "") = values()[key] as? String ?: default
     fun float(key: String, default: Float = 1f) = (values()[key] as? Number)?.toFloat() ?: default
     fun all(): Map<String, *> = values()
-    fun previewTextScale(value:Float) {snapshot=snapshot+mapOf("appTextScale" to value.coerceIn(.8f,1.4f));revision++}
+    fun previewTextScale(value:Float) {snapshot=snapshot+mapOf("appTextScale" to value.coerceIn(.8f,1.5f));revision++}
     fun clearPreview() {snapshot=prefs.all;revision++}
     suspend fun put(key: String, value: Any?) = putAll(mapOf(key to value))
     suspend fun putAll(values: Map<String, Any?>) = mutex.withLock {

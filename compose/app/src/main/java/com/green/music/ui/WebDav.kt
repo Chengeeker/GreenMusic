@@ -6,6 +6,8 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.*
@@ -16,6 +18,8 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import com.green.music.data.*
@@ -52,18 +56,31 @@ import kotlinx.coroutines.CancellationException
         Surface(color=c.primaryContainer.copy(alpha=.4f),shape=RoundedCornerShape(16.dp),modifier=Modifier.border(1.dp,c.primary.copy(alpha=.2f),RoundedCornerShape(16.dp))) {
             Row(Modifier.padding(14.dp)){Icon(Icons.Rounded.CloudSync,null,tint=c.primary);Spacer(Modifier.width(12.dp));Column {Text("备份内容",style=MaterialTheme.typography.titleMedium,fontWeight=FontWeight((700+LocalWeightDelta.current).coerceIn(100,900)),color=c.primary);Spacer(Modifier.height(4.dp));Text("备份应用设置、播放队列和最近播放，不包含封面或歌曲缓存。",style=MaterialTheme.typography.bodyMedium.copy(lineHeight=19.6.sp),color=c.onSurfaceVariant)}}
         }
-        Spacer(Modifier.height(16.dp));SectionCard {
-            ChoiceRow("全量安全备份",!full,"QQ 音乐登录凭据 和 WebDAV 密码不会上传。"){if(busy.isEmpty())full=false}
-            ChoiceRow("全量备份",full,"同时上传 QQ 音乐登录凭据 和 WebDAV 密码。备份文件含明文凭据，请妥善保管云盘及历史备份。"){if(busy.isEmpty())full=true}
+        Spacer(Modifier.height(16.dp));SettingsSectionCard {
+            Column(Modifier.selectableGroup()) {
+                listOf(false to "全量安全备份",true to "全量备份").forEach { (value,title)->
+                    Row(Modifier.fillMaxWidth().selectable(selected=full==value,enabled=busy.isEmpty(),
+                        role=Role.RadioButton,onClick=hapticClick {full=value}).padding(horizontal=16.dp,vertical=12.dp),
+                        horizontalArrangement=Arrangement.spacedBy(4.dp),verticalAlignment=Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(4.dp)) {
+                            Text(title,style=MaterialTheme.typography.titleMedium)
+                            Text(if(value)"含 QQ 音乐登录凭据及 WebDAV 密码" else "不含 QQ 音乐登录凭据及 WebDAV 密码",
+                                style=MaterialTheme.typography.bodyMedium,color=c.onSurfaceVariant)
+                            if(value)Text("含明文凭据，请妥善保管",style=MaterialTheme.typography.bodyMedium,color=c.onSurfaceVariant)
+                        }
+                        RadioButton(full==value,null,Modifier.size(24.dp),enabled=busy.isEmpty())
+                    }
+                }
+            }
         }
-        Spacer(Modifier.height(16.dp));SectionHeading("WebDAV 服务器配置");SectionCard {Column(Modifier.padding(16.dp),verticalArrangement=Arrangement.spacedBy(12.dp)) {
+        Spacer(Modifier.height(16.dp));SectionHeading("WebDAV 服务器配置");SettingsSectionCard {Column(Modifier.padding(16.dp),verticalArrangement=Arrangement.spacedBy(12.dp)) {
             WebDavField(url,{url=it},Modifier.fillMaxWidth(),enabled=busy.isEmpty(),label={Text("服务器 URL")},placeholder={Text("例如: https://dav.jianguoyun.com/dav/")},leadingIcon={Icon(Icons.Rounded.Link,null)},error=if(invalid)webDavUrlError(url)else null)
             WebDavField(user,{user=it},Modifier.fillMaxWidth(),enabled=busy.isEmpty(),label={Text("账号 / 邮箱")},leadingIcon={Icon(Icons.Rounded.PersonOutline,null)},error=if(invalid&&user.isBlank())"请输入账号"else null)
             WebDavField(password,{password=it},Modifier.fillMaxWidth(),enabled=busy.isEmpty(),label={Text("应用密码 / Token")},leadingIcon={Icon(Icons.Outlined.Lock,null)},visualTransformation=PasswordVisualTransformation(),error=if(invalid&&password.isBlank())"请输入密码或授权 Token"else null)
             WebDavField(dir,{dir=it},Modifier.fillMaxWidth(),enabled=busy.isEmpty(),label={Text("备份文件夹名称")},placeholder={Text("默认: GreenMusic")},leadingIcon={Icon(Icons.Outlined.Folder,null)})
             OutlinedButton(hapticClick({execute("test")}),Modifier.fillMaxWidth().padding(top=4.dp),enabled=busy.isEmpty()){if(busy=="test")BusySpinner()else Icon(Icons.Rounded.WifiTethering,null,Modifier.size(18.dp));Spacer(Modifier.width(8.dp));Text(if(busy=="test")"正在测试连接..." else "测试服务器连接")}
         }}
-        Spacer(Modifier.height(16.dp));SectionHeading("云端备份与还原操作");SectionCard {Row(Modifier.padding(16.dp),horizontalArrangement=Arrangement.spacedBy(12.dp)) {
+        Spacer(Modifier.height(16.dp));SectionHeading("云端备份与还原操作");SettingsSectionCard {Row(Modifier.padding(16.dp),horizontalArrangement=Arrangement.spacedBy(12.dp)) {
             Button(hapticClick({execute("upload")}),Modifier.weight(1f),enabled=busy.isEmpty(),contentPadding=PaddingValues(vertical=12.dp)){if(busy=="upload")BusySpinner(androidx.compose.ui.graphics.Color.White)else Icon(Icons.Rounded.CloudUpload,null);Spacer(Modifier.width(8.dp));Text(if(busy=="upload")"正在上传..." else "立即备份到云端")}
             FilledTonalButton(hapticClick({execute("restore")}),Modifier.weight(1f),enabled=busy.isEmpty(),contentPadding=PaddingValues(vertical=12.dp)){if(busy=="restore")BusySpinner()else Icon(Icons.Rounded.CloudDownload,null);Spacer(Modifier.width(8.dp));Text(if(busy=="restore")"正在拉取..." else "从云端恢复备份")}
         }}

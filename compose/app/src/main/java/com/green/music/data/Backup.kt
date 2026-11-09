@@ -21,8 +21,8 @@ import java.util.TimeZone
 import java.util.concurrent.TimeUnit
 
 object BackupFormat {
-    val bools = setOf("dynamicColor", "pureBlack", "haptics", "floatingNav", "liquidGlass", "customFontWeight", "shuffle", "downloadLyrics", "downloadTags", "lyricCenter", "lyricBlur", "lyricStagger")
-    val ranges = mapOf("themeMode" to 0..2, "colorIndex" to 0..7, "fontWeightDelta" to -100..300, "screenRefreshRateMode" to 0..8,
+    val bools = setOf("dynamicColor", "pureBlack", "haptics", "floatingNav", "liquidGlass", "translucentNavigationGlass", "customFontWeight", "shuffle", "downloadLyrics", "downloadTags", "lyricCenter", "lyricBlur", "lyricStagger")
+    val ranges = mapOf("themeMode" to 0..2, "colorIndex" to 0..7, "fontWeightDelta" to -300..300, "screenRefreshRateMode" to 0..8,
         "queueIndex" to -1..100000, "position" to 0..86400000, "repeat" to 0..3, "cacheLimitMb" to 128..16384,
         "downloadConcurrent" to 1..5, "downloadConnections" to 1..4, "downloadSpeedKiB" to 0..10240, "downloadRetries" to 0..3,
         "lyricFontSize" to 16..40, "lyricFontWeight" to 100..900, "lyricKaraoke" to 0..3)
@@ -41,7 +41,7 @@ object BackupFormat {
             ranges[key]?.let { range ->
                 if ((value !is Int && value !is Long) || (value as Number).toLong() !in range.first.toLong()..range.last.toLong()) throw MusicError("备份设置范围无效")
             }
-            if (key == "appTextScale" && (value !is Number || !value.toDouble().isFinite() || value.toDouble() !in .8..1.4)) throw MusicError("备份字体比例无效")
+            if (key == "appTextScale" && (value !is Number || !value.toDouble().isFinite() || value.toDouble() !in .8..1.5)) throw MusicError("备份字体比例无效")
             if (key == "downloadConnections" && (value as Number).toInt() !in listOf(1,2,4)) throw MusicError("备份下载连接数无效")
             if (key == "lyricFontWeight" && (value as Number).toInt() % 100 != 0) throw MusicError("备份歌词字重无效")
             if (key in listOf("quality", "downloadQuality") && value !in listOf("standard", "exhigh", "lossless")) throw MusicError("备份选项无效")

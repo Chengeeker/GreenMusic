@@ -53,7 +53,7 @@ fun GreenMusicTheme(settings: AppSettings, content: @Composable () -> Unit) {
     }
     val config = LocalConfiguration.current
     val systemDelta = systemWeightAdjustment(config,context)
-    val rawDelta = if (settings.bool("customFontWeight")) settings.int("fontWeightDelta").coerceIn(-100,300) else systemDelta
+    val rawDelta = if (settings.bool("customFontWeight")) settings.int("fontWeightDelta").coerceIn(-300,300) else systemDelta
     val delta=kotlin.math.round(rawDelta/100f).toInt()*100
     fun style(size: Float, height: Float, weight: Int) = TextStyle(fontSize=size.sp, lineHeight=height.sp, letterSpacing=0.sp,
         fontWeight=FontWeight((weight+delta).coerceIn(100,900)))
@@ -69,7 +69,7 @@ fun GreenMusicTheme(settings: AppSettings, content: @Composable () -> Unit) {
         if (dark) if (pure) Color.Black else Color(0xFF16171B) else scheme.surfaceContainer, dark)
     val density = LocalDensity.current
     CompositionLocalProvider(LocalReviewColors provides review, LocalWeightDelta provides delta,
-        LocalDensity provides Density(density.density, density.fontScale * settings.float("appTextScale").coerceIn(.8f,1.4f))) {
+        LocalDensity provides Density(density.density, density.fontScale * settings.float("appTextScale").coerceIn(.8f,1.5f))) {
         MaterialTheme(colorScheme=scheme, typography=typography) {
             CompositionLocalProvider(
                 LocalContentColor provides scheme.onSurface,

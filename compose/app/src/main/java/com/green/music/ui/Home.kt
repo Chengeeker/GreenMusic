@@ -77,7 +77,7 @@ import kotlinx.coroutines.*
     val inactiveIcons=listOf(Icons.Outlined.Explore,Icons.Outlined.Search,Icons.Outlined.LibraryMusic)
     val density=LocalDensity.current
     if(!ui.app.settings.bool("floatingNav",true)) {
-        NavigationBar(Modifier.navigationBarsPadding().height(maxOf(68f,12*density.fontScale*1.6f+48).dp),containerColor=LocalReviewColors.current.nav,tonalElevation=0.dp,windowInsets=WindowInsets(0,0,0,0)) {
+        NavigationBar(Modifier.height(maxOf(68f,12*density.fontScale*1.6f+48).dp+WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()),containerColor=LocalReviewColors.current.nav,tonalElevation=0.dp,windowInsets=WindowInsets.navigationBars) {
             labels.forEachIndexed { i,label->NavigationBarItem(selected==i,hapticClick({select(i)}),icon={Icon(if(i==selected)icons[i]else inactiveIcons[i],null)},
                 colors=NavigationBarItemDefaults.colors(selectedIconColor=c.onPrimaryContainer,selectedTextColor=c.primary,indicatorColor=c.primaryContainer,unselectedIconColor=c.onSurfaceVariant,unselectedTextColor=c.onSurfaceVariant),
                 label={Text(label,fontSize=12.sp,fontWeight=FontWeight(((if(i==selected)700 else 500)+LocalWeightDelta.current).coerceIn(100,900)))}) }

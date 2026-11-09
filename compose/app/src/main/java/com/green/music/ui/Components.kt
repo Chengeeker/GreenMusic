@@ -60,9 +60,14 @@ private fun Modifier.composedQuietClick(enabled: Boolean, role: Role?, onClick: 
     }
 }
 @Composable fun SectionHeading(title: String) { Text(title, Modifier.padding(start=16.dp,end=16.dp,bottom=12.dp), style=MaterialTheme.typography.titleSmall, color=MaterialTheme.colorScheme.primary) }
-@Composable fun SectionCard(modifier: Modifier = Modifier, shape: Shape = RoundedCornerShape(24.dp), content: @Composable ColumnScope.() -> Unit) {
-    val c=MaterialTheme.colorScheme
-    Column(modifier.fillMaxWidth().clip(shape).background(if(c.surface==Color.Black)c.surfaceContainer else c.surfaceContainerLow), content=content)
+@Composable
+internal fun SettingsSectionCard(content: @Composable ColumnScope.() -> Unit) =
+    SectionCard(color = MaterialTheme.colorScheme.settingsCardColor(LocalReviewColors.current.background), content = content)
+
+@Composable fun SectionCard(modifier: Modifier = Modifier, shape: Shape = RoundedCornerShape(24.dp), color: Color = MaterialTheme.colorScheme.let {
+    if (it.surface == Color.Black) it.surfaceContainer else it.surfaceContainerLow
+}, content: @Composable ColumnScope.() -> Unit) {
+    Column(modifier.fillMaxWidth().clip(shape).background(color), content=content)
 }
 internal fun Modifier.floatingBarShadow(dark:Boolean)=drawWithCache {
     val blur=16.dp.toPx();val pad=kotlin.math.ceil(3*(blur*.57735f+.5f)).toInt()

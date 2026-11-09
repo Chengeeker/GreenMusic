@@ -274,6 +274,8 @@ class ScreenTest {
                 }
             }
         }
+        // This backdrop/gesture regression targets the clear material, independently of the app default.
+        rule.runOnIdle { runBlocking { app.settings.put("translucentNavigationGlass", true) } }
         val tab = rule.onNodeWithContentDescription("我的").fetchSemanticsNode().boundsInRoot
         fun renderNavigation() = rule.runOnIdle {
             val view = rule.activity.window.decorView
@@ -683,6 +685,13 @@ class ScreenTest {
     @Test fun webDavValidationStaysUnderFieldsAndDoesNotStartNetworkWork() {
         fixture {WebDavScreen()}
         rule.waitUntil(5000){rule.onAllNodesWithText("测试服务器连接").fetchSemanticsNodes().isNotEmpty()}
+        rule.onNodeWithText("不含 QQ 音乐登录凭据及 WebDAV 密码").assertIsDisplayed()
+        rule.onNodeWithText("含明文凭据，请妥善保管").assertIsDisplayed()
+        rule.onNode(hasText("全量安全备份") and isSelectable()).assertIsSelected()
+        rule.onNodeWithText("全量备份").performClick()
+        rule.onNode(hasText("全量备份") and isSelectable()).assertIsSelected()
+        rule.onNodeWithText("全量安全备份").performClick()
+        screenshot("greenmusic46-webdav")
         val field=rule.onAllNodes(hasSetTextAction()).fetchSemanticsNodes().first().boundsInRoot
         assertEquals(48f*rule.activity.resources.displayMetrics.density,field.height,1f)
         rule.onNodeWithText("测试服务器连接").performScrollTo().performClick()
