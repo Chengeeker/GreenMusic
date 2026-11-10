@@ -121,11 +121,12 @@ void main() {
     });
     expect(await restarted.entries('b'), isEmpty);
     expect(await restarted.size(), 8);
-    cache.maxBytes = 8;
-    await expectLater(
-      cache.save(http, 'a', fixtureSong(4), stream),
-      throwsA(isA<MusicError>()),
-    );
+    cache.maxBytes = 4;
+    await cache.save(http, 'a', fixtureSong(4), stream);
+    expect(documents.files.length, 3);
+    expect(await cache.privateSize(), 4);
+    final extra = (await cache.entries('a')).singleWhere((e) => e.song.id == 4);
+    await cache.remove('a', extra);
     expect(documents.files.length, 2);
     final remote = entries.singleWhere((e) => e.documentUri != null);
     final audioBytes = documents.files.remove(remote.documentUri!)!;

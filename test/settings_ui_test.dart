@@ -16,6 +16,7 @@ import 'package:greenmusic/player/music_handler.dart';
 import 'package:greenmusic/providers.dart';
 import 'package:greenmusic/ui/theme_settings_page.dart';
 import 'package:greenmusic/ui/settings_page.dart';
+import 'package:greenmusic/ui/lyrics_settings_page.dart';
 import 'package:greenmusic/ui/webdav_backup_page.dart';
 import 'package:greenmusic/ui/library_view.dart';
 
@@ -143,6 +144,12 @@ void main() {
           closeTo(tester.getTopLeft(contentStart).dx, .01),
         );
       }
+      await scrollTo(find.text('歌词界面'), SettingsPage);
+      await tester.tap(find.text('歌词界面'));
+      await tester.pumpAndSettle();
+      expect(find.byType(LyricsSettingsPage), findsOneWidget);
+      await tester.tap(find.byType(BackButton));
+      await tester.pumpAndSettle();
       await scrollTo(find.text('WebDAV备份'), SettingsPage);
       await tester.tap(find.text('WebDAV备份'));
       await tester.pumpAndSettle();

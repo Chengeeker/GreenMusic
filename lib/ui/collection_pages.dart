@@ -6,6 +6,8 @@ import '../core/design_system/components/review_card.dart';
 import '../core/utils/app_toast.dart';
 import '../data/library_api.dart';
 import '../data/models.dart';
+import '../data/qq_music_api.dart';
+import 'batch_download_page.dart';
 import '../providers.dart';
 import 'widgets.dart';
 
@@ -43,6 +45,26 @@ class SongCollectionPage extends ConsumerStatefulWidget {
   final Future<SongPage> Function(int)? loader;
   @override
   ConsumerState<SongCollectionPage> createState() => _SongCollectionPageState();
+}
+
+Future<SongPage> _collectionPage(
+  QqMusicApi api,
+  SongCollectionPage config,
+  int offset,
+) async {
+  if (config.loader != null) {
+    return await config.loader!(offset);
+  } else if (config.playlist != null) {
+    return await api.playlistPage(config.playlist!, offset: offset);
+  } else if (config.album != null) {
+    final list = await api.albumSongs(config.album!);
+    return SongPage(list, list.length, false);
+  } else if (config.artist != null) {
+    final list = await api.artistSongs(config.artist!, offset: offset);
+    return SongPage(list, offset + list.length, list.length >= 50);
+  } else {
+    return const SongPage([], 0, false);
+  }
 }
 
 class _SongCollectionPageState extends ConsumerState<SongCollectionPage> {
@@ -85,20 +107,7 @@ class _SongCollectionPageState extends ConsumerState<SongCollectionPage> {
     });
     try {
       final api = ref.read(apiProvider);
-      SongPage page;
-      if (widget.loader != null) {
-        page = await widget.loader!(_offset);
-      } else if (widget.playlist != null) {
-        page = await api.playlistPage(widget.playlist!, offset: _offset);
-      } else if (widget.album != null) {
-        final list = await api.albumSongs(widget.album!);
-        page = SongPage(list, list.length, false);
-      } else if (widget.artist != null) {
-        final list = await api.artistSongs(widget.artist!, offset: _offset);
-        page = SongPage(list, _offset + list.length, list.length >= 50);
-      } else {
-        page = const SongPage([], 0, false);
-      }
+      final page = await _collectionPage(api, widget, _offset);
       if (!mounted || epoch != _epoch) return;
       final seen = _songs.map((s) => s.id).toSet();
       final fresh = page.items.where((s) => seen.add(s.id)).toList();
@@ -257,6 +266,23 @@ class _SongCollectionPageState extends ConsumerState<SongCollectionPage> {
                           : () => ref.read(playerProvider).playSongs(_songs),
                       icon: const Icon(Icons.play_arrow_rounded),
                       label: const Text('播放全部'),
+                    ),
+                    const SizedBox(height: 8),
+                    OutlinedButton.icon(
+                      onPressed: () {
+                        final api = ref.read(apiProvider);
+                        final config = widget;
+                        openPage(
+                          context,
+                          BatchDownloadPage(
+                            title: _title,
+                            loader: (offset) =>
+                                _collectionPage(api, config, offset),
+                          ),
+                        );
+                      },
+                      icon: const Icon(Icons.download_outlined),
+                      label: const Text('批量下载'),
                     ),
                   ],
                 ),

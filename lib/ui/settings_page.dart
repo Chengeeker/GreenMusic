@@ -10,6 +10,7 @@ import 'webdav_backup_page.dart';
 import '../providers.dart';
 import 'login_page.dart';
 import 'widgets.dart';
+import 'lyrics_settings_page.dart';
 import 'downloads_page.dart';
 import 'download_settings_page.dart';
 import 'notification_settings_page.dart';
@@ -53,6 +54,13 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                   title: '播放设置',
                   leading: const Icon(Icons.headphones_outlined),
                   onTap: () => openPage(context, const PlaybackSettingsPage()),
+                ),
+                const Divider(height: 1, indent: 56),
+                ReviewPreferenceTile(
+                  title: '歌词界面',
+                  subtitle: '字号、对齐与歌词动效',
+                  leading: const Icon(Icons.lyrics_outlined),
+                  onTap: () => openPage(context, const LyricsSettingsPage()),
                 ),
                 const Divider(height: 1, indent: 56),
                 ReviewPreferenceTile(
@@ -165,7 +173,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
               children: [
                 const ReviewPreferenceTile(
                   title: 'GreenMusic',
-                  subtitle: '1.0.0 · QQ 音乐第三方客户端',
+                  subtitle: '1.1.0 · QQ 音乐第三方客户端',
                   leading: Icon(Icons.music_note_rounded),
                   trailing: SizedBox.shrink(),
                   onTap: null,
@@ -178,7 +186,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                   onTap: () => showLicensePage(
                     context: context,
                     applicationName: 'GreenMusic',
-                    applicationVersion: '1.0.0',
+                    applicationVersion: '1.1.0',
                     applicationLegalese: '音乐接口复用 Lilt；Material 3 界面复用 Review。',
                   ),
                 ),

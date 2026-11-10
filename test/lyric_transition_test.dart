@@ -98,7 +98,7 @@ void main() {
           expect(find.text('歌词第0句'), findsNothing);
           final cue = find.text('歌词第$index句');
           expect(cue, findsOneWidget);
-          expect(tester.widget<Text>(cue).style!.fontWeight, FontWeight.bold);
+          expect(tester.widget<Text>(cue).style!.fontWeight, FontWeight.w600);
           final before = tester.getRect(cue);
           expect(before.center.dy, inExclusiveRange(170, 430));
           await tester.pump(const Duration(milliseconds: 16));

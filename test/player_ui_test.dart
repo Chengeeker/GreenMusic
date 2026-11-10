@@ -434,12 +434,7 @@ void main() {
       await tester.tap(find.byTooltip('顺序播放'));
       await tester.pumpAndSettle();
       expect(handler.repeat, AudioServiceRepeatMode.all);
-      handler.cache.progress.value = SongDownloadProgress(
-        'anonymous',
-        song,
-        20,
-        100,
-      );
+      handler.cache.report(SongDownloadProgress('anonymous', song, 20, 100));
       await tester.pump();
       await reveal(find.byTooltip('取消下载'));
       await tester.tap(find.byTooltip('取消下载'));

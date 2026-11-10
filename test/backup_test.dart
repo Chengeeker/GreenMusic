@@ -115,9 +115,60 @@ void main() {
     expect(store.prefs.containsKey('saltUi'), false);
     expect(store.prefs.getInt('themeMode'), 2);
   });
+  test(
+    'lyrics preferences round trip and reject invalid values before restore',
+    () async {
+      const integers = {
+        'lyricFontSize': 40,
+        'lyricFontWeight': 900,
+        'lyricKaraoke': 2,
+      };
+      const booleans = {
+        'lyricCenter': false,
+        'lyricBlur': false,
+        'lyricStagger': false,
+      };
+      for (final entry in integers.entries) {
+        await store.prefs.setInt(entry.key, entry.value);
+      }
+      for (final entry in booleans.entries) {
+        await store.prefs.setBool(entry.key, entry.value);
+      }
+      final backup = await store.exportAllData();
+      for (final key in [...integers.keys, ...booleans.keys]) {
+        await store.prefs.remove(key);
+      }
+      await store.restoreAllData(backup);
+      for (final entry in {...integers, ...booleans}.entries) {
+        expect(store.prefs.get(entry.key), entry.value);
+      }
+      for (final bad in [
+        {'lyricFontSize': 41},
+        {'lyricFontWeight': 650},
+        {'lyricKaraoke': 4},
+        {'lyricBlur': 1},
+      ]) {
+        await expectLater(
+          store.restoreAllData({...backup, 'preferences': bad}),
+          throwsA(isA<MusicError>()),
+        );
+        expect(store.prefs.getInt('lyricFontSize'), 40);
+      }
+    },
+  );
   test('download preferences restore, while device grants and folder paths stay local', () async {
     await store.prefs.setString('downloadQuality', 'lossless');
     await store.prefs.setBool('downloadLyrics', true);
+    await store.prefs.setBool('downloadTags', true);
+    await store.prefs.setInt('cacheLimitMb', 16384);
+    for (final entry in {
+      'downloadConcurrent': 5,
+      'downloadConnections': 4,
+      'downloadSpeedKiB': 512,
+      'downloadRetries': 3,
+    }.entries) {
+      await store.prefs.setInt(entry.key, entry.value);
+    }
     await store.prefs.setString(
       'downloadTree',
       'content://device/tree/private',
@@ -128,18 +179,45 @@ void main() {
     final settings = obj(backup['preferences']);
     expect(settings['downloadQuality'], 'lossless');
     expect(settings['downloadLyrics'], true);
+    expect(settings['downloadTags'], true);
     expect(settings.containsKey('downloadTree'), false);
     expect(settings.containsKey('downloadTreeLabel'), false);
     expect(settings.containsKey('notificationAsked'), false);
     await store.prefs.remove('downloadQuality');
     await store.prefs.remove('downloadLyrics');
+    await store.prefs.remove('downloadTags');
+    for (final key in [
+      'downloadConcurrent',
+      'downloadConnections',
+      'downloadSpeedKiB',
+      'downloadRetries',
+    ]) {
+      await store.prefs.remove(key);
+    }
     await store.restoreAllData(backup);
     expect(store.prefs.getString('downloadQuality'), 'lossless');
     expect(store.prefs.getBool('downloadLyrics'), true);
+    expect(store.prefs.getBool('downloadTags'), true);
+    expect(store.prefs.getInt('cacheLimitMb'), 16384);
+    for (final entry in {
+      'downloadConcurrent': 5,
+      'downloadConnections': 4,
+      'downloadSpeedKiB': 512,
+      'downloadRetries': 3,
+    }.entries) {
+      expect(settings[entry.key], entry.value);
+      expect(store.prefs.getInt(entry.key), entry.value);
+    }
     expect(
       store.prefs.getString('downloadTree'),
       'content://device/tree/private',
     );
+    settings['downloadConnections'] = 3;
+    expect(
+      () => BackupService.validate({...backup, 'preferences': settings}),
+      throwsA(isA<MusicError>()),
+    );
+    settings['downloadConnections'] = 4;
     settings['downloadQuality'] = 'invalid';
     final invalid = {...backup, 'preferences': settings};
     expect(() => BackupService.validate(invalid), throwsA(isA<MusicError>()));

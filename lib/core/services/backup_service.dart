@@ -38,6 +38,10 @@ class BackupService {
     'customFontWeight',
     'shuffle',
     'downloadLyrics',
+    'downloadTags',
+    'lyricCenter',
+    'lyricBlur',
+    'lyricStagger',
   };
   static const intRanges = {
     'themeMode': (0, 2),
@@ -47,7 +51,14 @@ class BackupService {
     'queueIndex': (-1, 100000),
     'position': (0, 86400000),
     'repeat': (0, 3),
-    'cacheLimitMb': (128, 1024),
+    'cacheLimitMb': (128, 16384),
+    'downloadConcurrent': (1, 5),
+    'downloadConnections': (1, 4),
+    'downloadSpeedKiB': (0, 10240),
+    'downloadRetries': (0, 3),
+    'lyricFontSize': (16, 40),
+    'lyricFontWeight': (100, 900),
+    'lyricKaraoke': (0, 3),
   };
   static const stringKeys = {
     'quality',
@@ -132,6 +143,12 @@ class BackupService {
       if (k == 'appTextScale' &&
           (v is! num || !v.isFinite || v < .8 || v > 1.4)) {
         throw const MusicError('备份字体比例无效');
+      }
+      if (k == 'downloadConnections' && ![1, 2, 4].contains(v)) {
+        throw const MusicError('备份下载连接数无效');
+      }
+      if (k == 'lyricFontWeight' && (v as int) % 100 != 0) {
+        throw const MusicError('备份歌词字重无效');
       }
       if ((k == 'quality' || k == 'downloadQuality') &&
           !['standard', 'exhigh', 'lossless'].contains(v)) {

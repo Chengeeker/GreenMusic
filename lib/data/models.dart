@@ -91,6 +91,23 @@ class Song {
   late Album album;
   String get artistNames => artists.map((a) => a.name).join(' / ');
   String get cover => album.cover;
+  String get releaseYear {
+    for (final source in [raw, obj(raw['album'])]) {
+      final date = text(source, [
+        'time_public',
+        'pub_time',
+        'publishDate',
+        'release_time',
+        'pubtime',
+      ]);
+      final year = RegExp(r'^(\d{4})(?:[-/.]|$)').firstMatch(date)?.group(1);
+      if (year != null && int.parse(year) >= 1000 && int.parse(year) <= 2999) {
+        return year;
+      }
+    }
+    return '';
+  }
+
   int downloadBytes(String quality) {
     final (fileKey, legacyKey) = switch (quality) {
       'exhigh' => ('size_320mp3', 'size320'),
@@ -236,6 +253,10 @@ class MusicError implements Exception {
   String toString() => message;
 }
 
+class DownloadSpaceError extends MusicError {
+  const DownloadSpaceError(super.message);
+}
+
 class SongStream {
   const SongStream(this.uri, this.quality, this.format);
   final Uri uri;
@@ -243,12 +264,30 @@ class SongStream {
 }
 
 class LyricLine {
-  const LyricLine(this.time, this.text, {this.translation = ''});
+  const LyricLine(
+    this.time,
+    this.text, {
+    this.translation = '',
+    this.words = const [],
+  });
   final Duration time;
   final String text, translation;
+  final List<LyricWord> words;
+}
+
+class LyricWord {
+  const LyricWord(this.text, this.time, {this.end});
+  final String text;
+  final Duration time;
+  final Duration? end;
 }
 
 List<LyricLine> parseLyrics(String original, String translation) {
+  final wordTag = RegExp(r'<(\d{1,3}):(\d{2})(?:[.:](\d{1,3}))?>');
+  int stamp(RegExpMatch m) =>
+      integer(m[1]) * 60000 +
+      integer(m[2]) * 1000 +
+      integer((m[3] ?? '').padRight(3, '0'));
   List<LyricLine> parse(String input) {
     final out = <LyricLine>[];
     var offset = 0;
@@ -259,6 +298,8 @@ List<LyricLine> parseLyrics(String original, String translation) {
       final matches = tag.allMatches(line).toList();
       if (matches.isEmpty) continue;
       final content = line.substring(matches.last.end).trim();
+      final markers = wordTag.allMatches(content).toList();
+      final plain = content.replaceAll(wordTag, '').trim();
       for (final m in matches) {
         final fraction = (m[3] ?? '').padRight(3, '0');
         final millis =
@@ -266,9 +307,42 @@ List<LyricLine> parseLyrics(String original, String translation) {
             integer(m[2]) * 1000 +
             integer(fraction) +
             offset;
-        out.add(
-          LyricLine(Duration(milliseconds: millis < 0 ? 0 : millis), content),
-        );
+        final time = Duration(milliseconds: millis < 0 ? 0 : millis);
+        final words = <LyricWord>[];
+        var valid =
+            markers.isNotEmpty &&
+            content.substring(0, markers.first.start).trim().isEmpty;
+        for (var i = 0; valid && i < markers.length; i++) {
+          final start = stamp(markers[i]) + offset;
+          final end = i + 1 < markers.length
+              ? stamp(markers[i + 1]) + offset
+              : null;
+          if (start < time.inMilliseconds || end != null && end < start) {
+            valid = false;
+            break;
+          }
+          var text = content.substring(
+            markers[i].end,
+            i + 1 < markers.length ? markers[i + 1].start : content.length,
+          );
+          if (i == 0) text = text.trimLeft();
+          if (i == markers.length - 1 ||
+              i == markers.length - 2 &&
+                  content.substring(markers.last.end).isEmpty) {
+            text = text.trimRight();
+          }
+          if (text.isNotEmpty) {
+            words.add(
+              LyricWord(
+                text,
+                Duration(milliseconds: start),
+                end: end == null ? null : Duration(milliseconds: end),
+              ),
+            );
+          }
+        }
+        if (!valid || words.map((w) => w.text).join() != plain) words.clear();
+        out.add(LyricLine(time, plain, words: List.unmodifiable(words)));
       }
     }
     out.sort((a, b) => a.time.compareTo(b.time));
@@ -284,6 +358,7 @@ List<LyricLine> parseLyrics(String original, String translation) {
           l.time,
           l.text,
           translation: trans[l.time.inMilliseconds] ?? '',
+          words: l.words,
         ),
       )
       .toList();

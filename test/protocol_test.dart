@@ -388,6 +388,38 @@ void main() {
     expect(page.nextOffset, 2);
     expect(page.more, isTrue);
   });
+  test('truncated public playlist uses authenticated pagination or reports incomplete data', () async {
+    final offsets = <int>[];
+    final adapter = JsonAdapter((o, b) {
+      if (o.uri.host == 'c.y.qq.com') {
+        return {
+          'code': 0,
+          'cdlist': [
+            {
+              'songnum': 3,
+              'songlist': [fixtureSong(1).raw],
+            },
+          ],
+        };
+      }
+      final offset = integer(obj(obj(b['req_0'])['param'])['song_begin']);
+      offsets.add(offset);
+      return envelope({
+        'songlist': [fixtureSong(offset + 1).raw],
+        'total_song_num': 3,
+        'hasmore': offset < 2,
+      });
+    });
+    final api = QqMusicApi(dio: Dio()..httpClientAdapter = adapter);
+    const list = MusicList(id: 1, name: '公开歌单');
+    await expectLater(api.playlistPage(list), throwsA(isA<MusicError>()));
+    api.session = MusicSession(credential());
+    var page = await api.playlistPage(list);
+    expect(page.more, true);
+    page = await api.playlistPage(list, offset: page.nextOffset);
+    expect(page.items.single.id, 2);
+    expect(offsets, [0, 1]);
+  });
   test('rename preserves description, tags, artwork and visibility then reads back', () async {
     var renamed = false;
     final adapter = JsonAdapter((o, b) {

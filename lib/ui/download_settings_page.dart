@@ -11,6 +11,12 @@ import '../player/download_storage.dart';
 import '../providers.dart';
 import 'widgets.dart';
 
+String downloadSpeedLabel(int speed) => speed == 0
+    ? '不限速'
+    : speed < 1024
+    ? '$speed KB/s'
+    : '${speed / 1024 == speed ~/ 1024 ? speed ~/ 1024 : (speed / 1024).toStringAsFixed(1)} MB/s';
+
 class DownloadSettingsPage extends ConsumerStatefulWidget {
   const DownloadSettingsPage({super.key});
   @override
@@ -20,6 +26,53 @@ class DownloadSettingsPage extends ConsumerStatefulWidget {
 
 class _DownloadSettingsPageState extends ConsumerState<DownloadSettingsPage> {
   bool _busy = false;
+  Future<void> _choose(
+    String key,
+    String title,
+    Map<int, String> choices,
+    int current,
+  ) async {
+    final selected = await showModalBottomSheet<int>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      builder: (context) => SafeArea(
+        top: false,
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.sizeOf(context).height * .75,
+          ),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Text(
+                    title,
+                    style: Theme.of(context).textTheme.titleLarge,
+                  ),
+                ),
+                for (final entry in choices.entries)
+                  ReviewChoiceTile<int>(
+                    title: entry.value,
+                    value: entry.key,
+                    groupValue: current,
+                    onSelected: () => Navigator.pop(context, entry.key),
+                  ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+    if (selected != null && mounted) {
+      await _change(() async {
+        await ref.read(preferencesProvider).setInt(key, selected);
+      });
+    }
+  }
+
   Future<void> _change(Future<void> Function() action) async {
     setState(() => _busy = true);
     await runAction(context, action);
@@ -40,6 +93,76 @@ class _DownloadSettingsPageState extends ConsumerState<DownloadSettingsPage> {
           vertical: 12,
         ).add(insets),
         children: [
+          const AppSectionHeading('下载任务'),
+          AppSectionCard(
+            child: Column(
+              children: [
+                ReviewPreferenceTile(
+                  title: '同时下载歌曲数',
+                  subtitle: '${prefs.getInt('downloadConcurrent') ?? 3} 首',
+                  leading: const Icon(Icons.queue_music_rounded),
+                  onTap: _busy
+                      ? null
+                      : () => _choose('downloadConcurrent', '同时下载歌曲数', {
+                          for (var i = 1; i <= 5; i++) i: '$i 首',
+                        }, prefs.getInt('downloadConcurrent') ?? 3),
+                ),
+                ReviewPreferenceTile(
+                  title: '每首下载连接数',
+                  subtitle: '${prefs.getInt('downloadConnections') ?? 1} 个连接',
+                  leading: const Icon(Icons.call_split_rounded),
+                  onTap: _busy
+                      ? null
+                      : () => _choose('downloadConnections', '每首下载连接数', {
+                          1: '1 个连接',
+                          2: '2 个连接',
+                          4: '4 个连接',
+                        }, prefs.getInt('downloadConnections') ?? 1),
+                ),
+                ReviewPreferenceTile(
+                  title: '下载总限速',
+                  subtitle: downloadSpeedLabel(
+                    prefs.getInt('downloadSpeedKiB') ?? 0,
+                  ),
+                  leading: const Icon(Icons.speed_rounded),
+                  onTap: _busy
+                      ? null
+                      : () => _choose('downloadSpeedKiB', '下载总限速', {
+                          for (final speed in [
+                            0,
+                            128,
+                            256,
+                            512,
+                            1024,
+                            2048,
+                            5120,
+                            10240,
+                          ])
+                            speed: downloadSpeedLabel(speed),
+                        }, prefs.getInt('downloadSpeedKiB') ?? 0),
+                ),
+                ReviewPreferenceTile(
+                  title: '网络失败自动重试',
+                  subtitle: '${prefs.getInt('downloadRetries') ?? 2} 次',
+                  leading: const Icon(Icons.refresh_rounded),
+                  onTap: _busy
+                      ? null
+                      : () => _choose('downloadRetries', '网络失败自动重试', {
+                          0: '不自动重试',
+                          1: '1 次',
+                          2: '2 次',
+                          3: '3 次',
+                        }, prefs.getInt('downloadRetries') ?? 2),
+                ),
+              ],
+            ),
+          ),
+          const Padding(
+            padding: EdgeInsets.all(16),
+            child: Text(
+              '设置从下次任务生效。总限速由所有音频连接共享；小文件或不支持可靠分段的音源自动改单连接。更多连接不一定更快。',
+            ),
+          ),
           const AppSectionHeading('下载音质'),
           AppSectionCard(
             child: Column(
@@ -104,6 +227,23 @@ class _DownloadSettingsPageState extends ConsumerState<DownloadSettingsPage> {
                 if (!_busy) {
                   _change(() async {
                     await prefs.setBool('downloadLyrics', value);
+                  });
+                }
+              },
+            ),
+          ),
+          const SizedBox(height: 24),
+          const AppSectionHeading('歌曲信息'),
+          AppSectionCard(
+            child: ReviewSwitchTile(
+              leading: const Icon(Icons.library_music_outlined),
+              title: '写入歌曲标签',
+              summary: '将封面、标题、艺术家、专辑、发行年份和歌词写入新下载的 MP3 / FLAC；缺失信息留空，不修改已有下载',
+              value: prefs.getBool('downloadTags') ?? false,
+              onChanged: (value) {
+                if (!_busy) {
+                  _change(() async {
+                    await prefs.setBool('downloadTags', value);
                   });
                 }
               },

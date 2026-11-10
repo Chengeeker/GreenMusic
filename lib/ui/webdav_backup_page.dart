@@ -1,5 +1,8 @@
 // Form and grouped backup controls reused from Review webdav_backup_page.dart (MIT).
 import 'package:flutter/material.dart';
+
+import '../player/lyrics_settings.dart';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 
@@ -154,6 +157,7 @@ class _WebDavBackupPageState extends ConsumerState<WebDavBackupPage> {
         if (!mounted) return;
       }
       ref.read(themeProvider.notifier).reload();
+      ref.read(lyricsSettingsProvider.notifier).reload();
       try {
         await ref
             .read(themeProvider.notifier)

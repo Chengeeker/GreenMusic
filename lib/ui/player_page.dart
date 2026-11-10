@@ -10,6 +10,7 @@ import '../core/theme/theme_provider.dart';
 import '../core/utils/haptic_feedback_util.dart';
 import '../data/models.dart';
 import '../player/music_handler.dart';
+import '../player/download_queue.dart';
 import '../providers.dart';
 import 'collection_pages.dart';
 import 'player_transition.dart';
@@ -17,6 +18,8 @@ import 'player_swipe_slide.dart';
 import 'song_actions.dart';
 import 'widgets.dart';
 import 'mini_lyrics.dart';
+import 'synced_lyrics.dart';
+export 'synced_lyrics.dart' show SyncedLyrics;
 import 'wavy_slider_track.dart';
 
 String durationText(Duration value) =>
@@ -274,20 +277,35 @@ class _PlayerPageState extends ConsumerState<PlayerPage> {
             icon: const Icon(Icons.chat_bubble_outline_rounded),
             onPressed: () => openPage(context, CommentsPage(song)),
           ),
-          ValueListenableBuilder(
-            valueListenable: handler.cache.progress,
-            builder: (context, task, _) {
+          ListenableBuilder(
+            listenable: Listenable.merge([
+              handler.cache.transfers,
+              handler.downloadQueue,
+            ]),
+            builder: (context, _) {
+              final task = handler.cache.transfers.value[song.id];
+              final queue = handler.downloadQueue;
               final active =
                   task != null &&
-                  task.account == handler.account &&
-                  task.song.id == song.id;
+                      task.account == handler.account &&
+                      task.song.id == song.id ||
+                  queue.busy &&
+                      queue.owner == handler.account &&
+                      queue.items.any(
+                        (item) =>
+                            item.song.id == song.id &&
+                            [
+                              DownloadStatus.queued,
+                              DownloadStatus.running,
+                            ].contains(item.status),
+                      );
               final local = [
                 'file',
                 'content',
               ].contains(handler.currentStream?.uri.scheme);
               return IconButton(
                 tooltip: active
-                    ? '取消下载'
+                    ? (queue.busy && queue.items.length > 1 ? '取消全部下载' : '取消下载')
                     : local
                     ? '已下载到本机'
                     : '下载歌曲',
@@ -304,7 +322,7 @@ class _PlayerPageState extends ConsumerState<PlayerPage> {
                           children: [
                             CircularProgressIndicator(
                               strokeWidth: 2,
-                              value: task.fraction,
+                              value: task?.fraction,
                             ),
                             const Icon(Icons.close_rounded, size: 14),
                           ],
@@ -832,154 +850,4 @@ class _PlayerSeekBarState extends State<_PlayerSeekBar>
       ),
     );
   }
-}
-
-class SyncedLyrics extends ConsumerStatefulWidget {
-  const SyncedLyrics({super.key, required this.lines, required this.onSeek});
-  final List<LyricLine> lines;
-  final ValueChanged<Duration> onSeek;
-  @override
-  ConsumerState<SyncedLyrics> createState() => _SyncedLyricsState();
-}
-
-class _SyncedLyricsState extends ConsumerState<SyncedLyrics> {
-  static const _verticalPadding = 24.0;
-  ScrollController? _scroll;
-  late final _player = ref.read(playerProvider).player;
-  StreamSubscription<Duration>? _subscription;
-  int _active = -1;
-  DateTime _manual = DateTime.fromMillisecondsSinceEpoch(0);
-  @override
-  void initState() {
-    super.initState();
-    _active = lyricIndexAt(widget.lines, _player.position);
-    _subscription = _player.positionStream.listen(_update);
-  }
-
-  @override
-  void didUpdateWidget(covariant SyncedLyrics old) {
-    super.didUpdateWidget(old);
-    if (!identical(old.lines, widget.lines)) {
-      _active = -1;
-      _manual = DateTime.fromMillisecondsSinceEpoch(0);
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) _update(_player.position);
-      });
-    }
-  }
-
-  void _update(Duration position) {
-    final active = lyricIndexAt(widget.lines, position);
-    if (active == _active || !mounted) return;
-    setState(() => _active = active);
-    final scroll = _scroll;
-    if (active < 0 ||
-        scroll == null ||
-        !scroll.hasClients ||
-        DateTime.now().difference(_manual) < const Duration(seconds: 4)) {
-      return;
-    }
-    final target =
-        (active * lineHeight - scroll.position.viewportDimension * .35).clamp(
-          0.0,
-          scroll.position.maxScrollExtent,
-        );
-    if (MediaQuery.disableAnimationsOf(context)) {
-      scroll.jumpTo(target);
-    } else {
-      unawaited(
-        scroll.animateTo(
-          target,
-          duration: const Duration(milliseconds: 260),
-          curve: Curves.easeOutCubic,
-        ),
-      );
-    }
-  }
-
-  double get lineHeight => MediaQuery.textScalerOf(context).scale(22) * 3.8;
-  @override
-  void dispose() {
-    _subscription?.cancel();
-    _scroll?.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) => LayoutBuilder(
-    builder: (context, constraints) {
-      // Fixed extents allow correct positioning before the first paint.
-      _scroll ??= ScrollController(
-        keepScrollOffset: false,
-        initialScrollOffset:
-            (_active * lineHeight - constraints.maxHeight * .35).clamp(
-              0.0,
-              math.max(
-                0.0,
-                widget.lines.length * lineHeight +
-                    _verticalPadding * 2 -
-                    constraints.maxHeight,
-              ),
-            ),
-      );
-      return NotificationListener<ScrollNotification>(
-        onNotification: (n) {
-          if (n is ScrollStartNotification && n.dragDetails != null) {
-            _manual = DateTime.now();
-          }
-          return false;
-        },
-        child: ListView.builder(
-          controller: _scroll,
-          itemExtent: lineHeight,
-          padding: const EdgeInsets.symmetric(vertical: _verticalPadding),
-          itemCount: widget.lines.length,
-          itemBuilder: (context, i) {
-            final line = widget.lines[i];
-            return Semantics(
-              selected: i == _active,
-              child: InkWell(
-                onTap: () => widget.onSeek(line.time),
-                borderRadius: BorderRadius.circular(16),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 6,
-                  ),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        line.text,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        textAlign: TextAlign.start,
-                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                          color: i == _active
-                              ? Theme.of(context).colorScheme.onSurface
-                              : Theme.of(context).colorScheme.onSurfaceVariant,
-                          fontWeight: i == _active
-                              ? FontWeight.bold
-                              : FontWeight.normal,
-                        ),
-                      ),
-                      if (line.translation.isNotEmpty)
-                        Text(
-                          line.translation,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          textAlign: TextAlign.start,
-                          style: Theme.of(context).textTheme.bodyMedium,
-                        ),
-                    ],
-                  ),
-                ),
-              ),
-            );
-          },
-        ),
-      );
-    },
-  );
 }

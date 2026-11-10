@@ -7,6 +7,9 @@ import 'package:flutter/foundation.dart';
 
 import '../data/models.dart';
 import 'download_storage.dart';
+import 'audio_tags.dart';
+import 'download_queue.dart';
+import 'download_transfer.dart';
 
 class DownloadedSong {
   const DownloadedSong(
@@ -36,11 +39,15 @@ class SongDownloadProgress {
     this.account,
     this.song,
     this.received,
-    this.total,
-  );
+    this.total, {
+    this.stage = '正在下载',
+    this.bytesPerSecond = 0,
+  });
   final String account;
   final Song song;
   final int received, total;
+  final String stage;
+  final double bytesPerSecond;
   double? get fraction => total > 0 ? (received / total).clamp(0, 1) : null;
 }
 
@@ -56,8 +63,61 @@ class AudioCache {
   final DownloadStorage? storage;
   final changes = ValueNotifier<int>(0);
   final progress = ValueNotifier<SongDownloadProgress?>(null);
-  CancelToken? _download;
-  Future<void>? _pending;
+  final transfers = ValueNotifier<Map<int, SongDownloadProgress>>({});
+  final _downloads = <String, CancelToken>{};
+  final _pending = <String, Future<void>>{};
+  final _reserved = <String, int>{};
+  Future<int>? _quotaBase;
+  int _committed = 0;
+  final _lastProgress = <int, DateTime>{};
+
+  void report(SongDownloadProgress value) {
+    final now = DateTime.now();
+    final previous = transfers.value[value.song.id];
+    if (previous?.stage == value.stage &&
+        previous!.received > 0 &&
+        value.received != value.total &&
+        now
+                .difference(_lastProgress[value.song.id] ?? DateTime(2000))
+                .inMilliseconds <
+            200) {
+      return;
+    }
+    _lastProgress[value.song.id] = now;
+    transfers.value = {...transfers.value, value.song.id: value};
+    progress.value = value;
+  }
+
+  void finishProgress(int id) {
+    _lastProgress.remove(id);
+    transfers.value = {...transfers.value}..remove(id);
+    progress.value = transfers.value.values.firstOrNull;
+  }
+
+  void clearProgress() {
+    _lastProgress.clear();
+    transfers.value = {};
+    progress.value = null;
+  }
+
+  Future<int> privateSize() async {
+    var total = 0;
+    for (final file in await _audioFiles()) {
+      total += await file.length();
+    }
+    return total;
+  }
+
+  void _reserve(String key, int bytes, int base) {
+    final other = _reserved.entries
+        .where((e) => e.key != key)
+        .fold<int>(0, (a, e) => a + e.value);
+    if (base + _committed + other + bytes > maxBytes) {
+      throw const DownloadSpaceError('私有存储空间不足，请删除歌曲或提高空间上限');
+    }
+    _reserved[key] = bytes;
+  }
+
   int maxBytes;
   static final _audioName = RegExp(
     r'^[a-f0-9]{16}-([1-9]\d*)-(standard|exhigh|lossless)\.(mp3|flac)$',
@@ -75,13 +135,17 @@ class AudioCache {
 
   // Run before the player starts: a killed process cannot execute download finally blocks.
   Future<void> cleanupInterrupted() async {
-    if (_pending != null) return;
+    if (_pending.isNotEmpty) return;
     for (final dir in _directories) {
       if (!await dir.exists()) continue;
       await for (final entry in dir.list(followLinks: false)) {
         if (entry is! File) continue;
         final name = entry.uri.pathSegments.last;
-        final base = name.endsWith('.lrc.part')
+        final base = RegExp(r'\.part\.segment[0-3]$').hasMatch(name)
+            ? name.replaceFirst(RegExp(r'\.part\.segment[0-3]$'), '')
+            : name.endsWith('.part.tags.part')
+            ? name.substring(0, name.length - 15)
+            : name.endsWith('.lrc.part')
             ? name.substring(0, name.length - 9)
             : name.endsWith('.part')
             ? name.substring(0, name.length - 5)
@@ -110,10 +174,7 @@ class AudioCache {
   }
 
   Future<int> size() async {
-    var total = 0;
-    for (final file in await _audioFiles()) {
-      total += await file.length();
-    }
+    var total = await privateSize();
     for (final entry in await _externalEntries(checkExists: false)) {
       try {
         if (storage != null && !await storage!.exists(entry.documentUri!)) {
@@ -275,20 +336,39 @@ class AudioCache {
     Song song,
     SongStream stream, {
     String? lyrics,
+    AudioTags? tags,
+    DownloadOptions? options,
+    DownloadLimiter? limiter,
   }) async {
-    if (_pending != null) throw const MusicError('已有歌曲正在下载，请稍候');
+    final key = _name(account, song, stream);
+    if (_downloads.containsKey(key)) throw const MusicError('这首歌曲正在下载');
     final cancel = CancelToken();
-    _download = cancel;
-    progress.value = SongDownloadProgress(account, song, 0, 0);
-    final work = _save(http, account, song, stream, cancel, lyrics);
-    _pending = work;
+    _downloads[key] = cancel;
+    report(SongDownloadProgress(account, song, 0, 0));
+    final work = _save(
+      http,
+      account,
+      song,
+      stream,
+      cancel,
+      lyrics,
+      tags,
+      options,
+      limiter ?? DownloadLimiter((options?.speedKiB ?? 0) * 1024),
+    );
+    _pending[key] = work;
     try {
       await work;
       changes.value++;
     } finally {
-      _download = null;
-      _pending = null;
-      progress.value = null;
+      _downloads.remove(key);
+      _pending.remove(key);
+      _reserved.remove(key);
+      if (_pending.isEmpty) {
+        _quotaBase = null;
+        _committed = 0;
+      }
+      finishProgress(song.id);
     }
   }
 
@@ -306,6 +386,7 @@ class AudioCache {
           'id': song.id,
           'mid': song.mid,
           'title': song.name,
+          'time_public': song.releaseYear,
           'interval': song.duration.inSeconds,
           'singer': [
             for (final artist in song.artists)
@@ -332,54 +413,65 @@ class AudioCache {
     SongStream stream,
     CancelToken cancel,
     String? lyrics,
+    AudioTags? tags,
+    DownloadOptions? options,
+    DownloadLimiter limiter,
   ) async {
     await directory.create(recursive: true);
     final target = file(account, song, stream);
-    final destination = storage?.tree;
+    final destination = options == null ? storage?.tree : options.tree;
     if (await _external(target) != null) return;
     if (await target.exists() && await target.length() > 0) {
       await _metadata(target, song);
       return;
     }
-    final used = await size();
-    if (used >= maxBytes) throw const MusicError('下载空间已满，请在“下载歌曲”中删除歌曲或提高空间上限');
+    final key = _name(account, song, stream);
+    final private = destination == null;
+    final used = private ? await (_quotaBase ??= privateSize()) : 0;
+    if (private) _reserve(key, 0, used);
     final temp = File('${target.path}.part');
+    var stage = '正在下载';
     try {
-      final response = await http.download(
-        stream.uri.toString(),
-        temp.path,
-        cancelToken: cancel,
-        options: Options(
-          headers: {'Cookie': '', 'User-Agent': 'QQMusic 14090008(android 10)'},
-        ),
-        onReceiveProgress: (count, total) {
-          progress.value = SongDownloadProgress(account, song, count, total);
-          if (used + count > maxBytes || total > 0 && used + total > maxBytes) {
-            cancel.cancel('download quota');
-          }
+      await DownloadTransfer(http, limiter).download(
+        stream.uri,
+        temp,
+        cancel,
+        connections: options?.connections ?? 1,
+        onStage: (value) {
+          stage = value;
+          report(SongDownloadProgress(account, song, 0, 0, stage: stage));
+        },
+        onProgress: (count, total, speed) {
+          if (private) _reserve(key, total > count ? total : count, used);
+          report(
+            SongDownloadProgress(
+              account,
+              song,
+              count,
+              total,
+              stage: stage,
+              bytesPerSecond: speed,
+            ),
+          );
         },
       );
-      final contentType = response.headers.value('content-type') ?? '';
-      final length = await temp.length();
-      if (response.statusCode != 200 ||
-          length == 0 ||
-          contentType.contains('text/') ||
-          contentType.contains('json')) {
-        throw const MusicError('音源未返回完整音频，未保存下载');
+      var length = await temp.length();
+      if (cancel.isCancelled) throw cancel.cancelError!;
+      if (tags != null) {
+        report(
+          SongDownloadProgress(account, song, length, length, stage: '正在写入标签'),
+        );
       }
-      final expected = int.tryParse(
-        response.headers.value('content-length') ?? '',
-      );
-      if (expected != null && expected != length) {
-        throw const MusicError('歌曲未完整下载，请重试');
-      }
-      if (used + length > maxBytes) {
-        throw const MusicError('下载空间不足，请删除部分已下载歌曲后重试');
-      }
-      if (cancel.isCancelled) {
-        throw cancel.cancelError!;
-      }
+      final audio = tags == null
+          ? temp
+          : await writeAudioTags(temp, stream.format, tags);
+      length = await audio.length();
+      if (cancel.isCancelled) throw cancel.cancelError!;
+      if (private) _reserve(key, length, used);
       final lrc = File('${target.path}.lrc.part');
+      report(
+        SongDownloadProgress(account, song, length, length, stage: '正在保存文件'),
+      );
       String? document, lyricsDocument;
       try {
         if (lyrics != null && lyrics.isNotEmpty) {
@@ -393,7 +485,7 @@ class AudioCache {
           document = await storage!.write(
             destination,
             '$base.${stream.format}',
-            temp.path,
+            audio.path,
             stream.format == 'flac' ? 'audio/flac' : 'audio/mpeg',
           );
           if (cancel.isCancelled) throw cancel.cancelError!;
@@ -417,9 +509,11 @@ class AudioCache {
             },
           );
         } else {
-          await temp.rename(target.path);
+          await audio.rename(target.path);
           if (await lrc.exists()) await lrc.rename(_lyricsFile(target).path);
           await _metadata(target, song);
+          _committed += length;
+          _reserved.remove(key);
         }
       } catch (_) {
         if (lyricsDocument != null) await storage!.delete(lyricsDocument);
@@ -431,12 +525,9 @@ class AudioCache {
       } finally {
         if (await lrc.exists()) await lrc.delete();
       }
-    } on DioException {
-      if (cancel.cancelError?.error == 'download quota') {
-        throw const MusicError('下载空间不足，请删除歌曲或提高空间上限');
-      }
-      rethrow;
     } finally {
+      final tagged = File('${temp.path}.tags.part');
+      if (await tagged.exists()) await tagged.delete();
       // Dio can report cancellation before its writer closes on platforms that lock open files.
       for (var attempt = 0; attempt < 4; attempt++) {
         try {
@@ -453,16 +544,22 @@ class AudioCache {
   }
 
   Future<void> cancel() async {
-    _download?.cancel('download cancelled');
-    try {
-      await _pending;
-    } catch (_) {
-      /* The owner reports the error and removes partial files. */
+    for (final cancel in _downloads.values.toList()) {
+      cancel.cancel('download cancelled');
     }
+    await Future.wait(
+      _pending.values.toList().map((work) async {
+        try {
+          await work;
+        } catch (_) {
+          /* The task owner reports the failure. */
+        }
+      }),
+    );
   }
 
   Future<void> remove(String account, DownloadedSong entry) async {
-    if (_pending != null) throw const MusicError('请先等待下载结束或取消下载');
+    if (_pending.isNotEmpty) throw const MusicError('请先等待下载结束或取消下载');
     final expected = _name(account, entry.song, entry.stream);
     if (!_directories.any(
       (dir) =>
@@ -520,5 +617,6 @@ class AudioCache {
   void dispose() {
     changes.dispose();
     progress.dispose();
+    transfers.dispose();
   }
 }

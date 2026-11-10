@@ -66,15 +66,24 @@ class _StorageSettingsPageState extends ConsumerState<StorageSettingsPage> {
         children: [
           const Padding(
             padding: EdgeInsets.all(12),
-            child: Text('空间上限按所有账号与保存位置合计。下载音质、保存位置和歌词可在“下载设置”中调整。'),
+            child: Text('空间上限仅计算所有账号在应用私有目录内的下载歌曲。自选公有文件夹不受此上限限制，仅受实际可用空间限制。'),
           ),
-          const AppSectionHeading('下载空间上限'),
+          const AppSectionHeading('私有存储空间上限'),
           AppSectionCard(
             child: Column(
               children: [
-                for (final value in [128, 256, 512, 1024])
+                for (final value in [
+                  128,
+                  256,
+                  512,
+                  1024,
+                  2048,
+                  4096,
+                  8192,
+                  16384,
+                ])
                   ReviewChoiceTile<int>(
-                    title: '$value MB',
+                    title: value < 1024 ? '$value MB' : '${value ~/ 1024} GB',
                     value: value,
                     groupValue: limit,
                     onSelected: () => runAction(context, () async {
@@ -88,7 +97,7 @@ class _StorageSettingsPageState extends ConsumerState<StorageSettingsPage> {
           ),
           const Padding(
             padding: EdgeInsets.all(16),
-            child: Text('空间不足时暂停新增下载，不会自动删除已下载歌曲。降低上限后，已有歌曲仍保留。'),
+            child: Text('私有存储达到上限时停止新增下载，不会自动删除已有歌曲。公有目录下载仍需私有目录提供临时空间。'),
           ),
         ],
       ),

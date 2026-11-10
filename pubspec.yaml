@@ -1,7 +1,7 @@
 name: greenmusic
 description: QQ Music client with Review's Material 3 interface.
 publish_to: none
-version: 1.0.0+28
+version: 1.1.0+31
 environment:
   sdk: ^3.13.0
   flutter: '>=3.47.0'

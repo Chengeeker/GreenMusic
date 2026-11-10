@@ -420,7 +420,7 @@ class QqMusicApi {
     if (playlist.owned && session?.encryptUin.isNotEmpty == true) {
       return _privateSongs(playlist, offset);
     }
-    if (offset > 0) return const SongPage([], 0, false);
+    if (offset > 0) return _privateSongs(playlist, offset);
     try {
       final d = await cgi('/qzone/fcg-bin/fcg_ucc_getcdinfo_byids_cp.fcg', {
         'disstid': playlist.id,
@@ -437,6 +437,10 @@ class QqMusicApi {
       }
       final result = songs(lists.first['songlist']);
       final count = number(lists.first, ['total_song_num', 'songnum']);
+      if (count > rows(lists.first['songlist']).length) {
+        if (session == null) throw const MusicError('服务端只返回了部分歌单，请登录后重试完整歌单');
+        return await _privateSongs(playlist, 0);
+      }
       if (result.isEmpty &&
           (playlist.count > 0 || count > 0) &&
           session != null) {

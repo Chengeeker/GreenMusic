@@ -7,6 +7,7 @@ import '../player/audio_cache.dart';
 import '../player/music_handler.dart';
 import '../providers.dart';
 import 'download_settings_page.dart';
+import 'download_queue_card.dart';
 import 'widgets.dart';
 
 class DownloadsPage extends ConsumerStatefulWidget {
@@ -89,7 +90,7 @@ class _DownloadsPageState extends ConsumerState<DownloadsPage> {
             child: ListView.builder(
               physics: const AlwaysScrollableScrollPhysics(),
               padding: pagePadding(context),
-              itemCount: entries.length + 3,
+              itemCount: entries.length + 4,
               itemBuilder: (context, index) {
                 if (index == 0) {
                   return AppSectionCard(
@@ -105,7 +106,7 @@ class _DownloadsPageState extends ConsumerState<DownloadsPage> {
                         const Divider(height: 1, indent: 56),
                         ReviewPreferenceTile(
                           title: '下载设置',
-                          subtitle: '下载音质、保存位置与 LRC 歌词',
+                          subtitle: '下载音质、保存位置、歌曲标签与 LRC 歌词',
                           leading: const Icon(Icons.tune_rounded),
                           onTap: () =>
                               openPage(context, const DownloadSettingsPage()),
@@ -114,44 +115,9 @@ class _DownloadsPageState extends ConsumerState<DownloadsPage> {
                     ),
                   );
                 }
-                if (index == 1) {
-                  return ValueListenableBuilder<SongDownloadProgress?>(
-                    valueListenable: _handler.cache.progress,
-                    builder: (context, task, _) {
-                      if (task == null || task.account != _account) {
-                        return const SizedBox(height: 16);
-                      }
-                      return Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                        child: AppSectionCard(
-                          child: Column(
-                            children: [
-                              ListTile(
-                                title: Text('正在下载：${task.song.name}'),
-                                subtitle: Text(
-                                  '${downloadSize(task.received)}${task.total > 0 ? ' / ${downloadSize(task.total)}' : ''}',
-                                ),
-                                trailing: IconButton(
-                                  tooltip: '取消下载',
-                                  onPressed: () => runAction(
-                                    context,
-                                    _handler.cancelDownload,
-                                  ),
-                                  icon: const Icon(Icons.close_rounded),
-                                ),
-                              ),
-                              LinearProgressIndicator(
-                                value: task.fraction,
-                                semanticsLabel: '歌曲下载进度',
-                              ),
-                            ],
-                          ),
-                        ),
-                      );
-                    },
-                  );
-                }
-                if (index == 2) {
+                if (index == 1) return const DownloadQueueCard();
+                if (index == 2) return const ActiveDownloads();
+                if (index == 3) {
                   if (snapshot.connectionState != ConnectionState.done) {
                     return const Center(
                       child: Padding(
@@ -171,7 +137,7 @@ class _DownloadsPageState extends ConsumerState<DownloadsPage> {
                   }
                   return const SizedBox.shrink();
                 }
-                final entry = entries[index - 3];
+                final entry = entries[index - 4];
                 return ListTile(
                   key: ValueKey(entry.file.path),
                   contentPadding: const EdgeInsets.symmetric(

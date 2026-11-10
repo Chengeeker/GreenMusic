@@ -4,6 +4,7 @@ import 'dart:math';
 
 import 'package:audio_service/audio_service.dart';
 import 'package:audio_session/audio_session.dart';
+import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -12,6 +13,9 @@ import '../data/auth_service.dart';
 import '../data/models.dart';
 import '../data/qq_music_api.dart';
 import 'audio_cache.dart';
+import 'download_metadata.dart';
+import 'download_queue.dart';
+import 'download_transfer.dart';
 
 String encodeLrc(List<LyricLine> lines) => lines
     .map((line) {
@@ -60,6 +64,7 @@ class MusicHandler extends BaseAudioHandler with SeekHandler {
       }),
     );
     _restoreQueue();
+    auth.addListener(_downloadAccountChanged);
   }
   final QqMusicApi api;
   final AuthService auth;
@@ -68,6 +73,19 @@ class MusicHandler extends BaseAudioHandler with SeekHandler {
   final AudioPlayer player;
   final changes = ValueNotifier<int>(0);
   final errors = ValueNotifier<String?>(null);
+  final downloadQueue = DownloadQueue();
+  Future<void>? _batchWork;
+  String? _downloadOwner;
+  final _metadataCancels = <int, CancelToken>{};
+  DownloadLimiter? _batchLimiter;
+
+  void _downloadAccountChanged() {
+    if (_downloadOwner != null && _downloadOwner != account ||
+        downloadQueue.busy && downloadQueue.owner != account) {
+      unawaited(cancelDownload());
+    }
+  }
+
   final _subscriptions = <StreamSubscription<dynamic>>[];
   final _lyricCache = <(int, String), Future<List<LyricLine>>>{};
   List<Song> tracks = [];
@@ -480,39 +498,138 @@ class MusicHandler extends BaseAudioHandler with SeekHandler {
   }
 
   Future<void> downloadSong(Song song, {String? quality}) async {
-    if (cache.progress.value != null) {
-      throw const MusicError('已有歌曲正在下载，请稍候');
+    await downloadSongs(
+      song.name,
+      [song],
+      options: DownloadOptions.fromPrefs(
+        prefs,
+        quality ?? prefs.getString('downloadQuality') ?? this.quality,
+      ),
+    );
+    final item = downloadQueue.items.single;
+    if (item.status == DownloadStatus.failed ||
+        item.status == DownloadStatus.cancelled) {
+      throw item.failure ?? const MusicError('下载已取消');
     }
-    final generation = ++_downloadGeneration;
-    final owner = account;
-    final downloadQuality =
-        quality ?? prefs.getString('downloadQuality') ?? this.quality;
-    final saveLyrics = prefs.getBool('downloadLyrics') ?? false;
-    cache.progress.value = SongDownloadProgress(owner, song, 0, 0);
+  }
+
+  Future<void> downloadSongs(
+    String title,
+    List<Song> songs, {
+    DownloadOptions? options,
+  }) async {
+    if (downloadQueue.busy || cache.progress.value != null) {
+      throw const MusicError('已有下载任务，请先等待或取消');
+    }
+    options ??= DownloadOptions.fromPrefs(
+      prefs,
+      prefs.getString('downloadQuality') ?? quality,
+    );
+    _batchLimiter = DownloadLimiter(options.speedKiB * 1024);
+    final work = downloadQueue.run(
+      title: title,
+      owner: account,
+      songs: songs,
+      options: options,
+      account: () => account,
+      download: _downloadSong,
+    );
+    _batchWork = work;
     try {
-      if (await cache.find(owner, song, downloadQuality, exact: true) != null) {
-        return;
-      }
-      if (generation != _downloadGeneration) {
-        throw const MusicError('下载已取消');
-      }
-      if (api.session?.expired == true) await auth.ensureSession();
-      final stream = await api.stream(song, downloadQuality);
-      final lyrics = saveLyrics ? encodeLrc(await api.lyrics(song)) : null;
-      if (generation != _downloadGeneration) {
-        throw const MusicError('下载已取消');
-      }
-      if (owner != account) throw const MusicError('账号已切换，请重新下载');
-      await cache.save(api.http, owner, song, stream, lyrics: lyrics);
+      await work;
     } finally {
-      if (generation == _downloadGeneration) cache.progress.value = null;
+      if (identical(_batchWork, work)) {
+        _batchWork = null;
+        _batchLimiter = null;
+      }
+    }
+  }
+
+  Future<void> retryDownloads() async {
+    if (downloadQueue.owner != account) throw const MusicError('请切回原账号后重试');
+    await downloadSongs(
+      downloadQueue.title,
+      downloadQueue.items
+          .where(
+            (i) => [
+              DownloadStatus.failed,
+              DownloadStatus.cancelled,
+            ].contains(i.status),
+          )
+          .map((i) => i.song)
+          .toList(),
+      options: downloadQueue.options,
+    );
+  }
+
+  Future<bool> _downloadSong(Song song, DownloadOptions options) async {
+    final generation = _downloadGeneration;
+    final owner = account;
+    _downloadOwner = owner;
+    final cancel = CancelToken();
+    _metadataCancels[song.id] = cancel;
+    void check() {
+      if (generation != _downloadGeneration) throw const MusicError('下载已取消');
+      if (owner != account) throw const MusicError('账号已切换，请重新下载');
+    }
+
+    cache.report(SongDownloadProgress(owner, song, 0, 0, stage: '正在读取歌曲信息'));
+    try {
+      if (await cache.find(owner, song, options.quality, exact: true) != null) {
+        check();
+        return false;
+      }
+      check();
+      if (api.session?.expired == true) await auth.ensureSession();
+      check();
+      if (options.tags) {
+        song = await api.songDetail(song);
+        check();
+      }
+      final stream = await api.stream(song, options.quality);
+      check();
+      if (await cache.find(owner, song, stream.quality, exact: true) != null) {
+        check();
+        return false;
+      }
+      final lyrics = options.lyrics || options.tags
+          ? encodeLrc(await api.lyrics(song))
+          : '';
+      check();
+      final tags = options.tags
+          ? await downloadMetadata(api.http, song, lyrics, cancel)
+          : null;
+      check();
+      await cache.save(
+        api.http,
+        owner,
+        song,
+        stream,
+        lyrics: options.lyrics ? lyrics : null,
+        tags: tags,
+        options: options,
+        limiter: downloadQueue.busy ? _batchLimiter : null,
+      );
+      return true;
+    } finally {
+      if (generation == _downloadGeneration) {
+        cache.finishProgress(song.id);
+        _metadataCancels.remove(song.id);
+        if (_metadataCancels.isEmpty) _downloadOwner = null;
+      }
     }
   }
 
   Future<void> cancelDownload() async {
+    downloadQueue.cancel();
+    for (final token in _metadataCancels.values) {
+      token.cancel('download cancelled');
+    }
+    _metadataCancels.clear();
+    _downloadOwner = null;
     final generation = ++_downloadGeneration;
     await cache.cancel();
-    if (generation == _downloadGeneration) cache.progress.value = null;
+    if (generation == _downloadGeneration) cache.clearProgress();
   }
 
   Future<void> playDownloaded(DownloadedSong entry) async {
@@ -537,7 +654,9 @@ class MusicHandler extends BaseAudioHandler with SeekHandler {
   }
 
   Future<void> disposeHandler() async {
+    auth.removeListener(_downloadAccountChanged);
     await cancelDownload();
+    await _batchWork;
     for (final sub in _subscriptions) {
       await sub.cancel();
     }
@@ -545,6 +664,7 @@ class MusicHandler extends BaseAudioHandler with SeekHandler {
     _lyricCache.clear();
     changes.dispose();
     errors.dispose();
+    downloadQueue.dispose();
     cache.dispose();
   }
 }

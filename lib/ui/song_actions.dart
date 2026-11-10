@@ -15,7 +15,7 @@ Future<void> downloadSongWithChoice(
   Song song,
 ) async {
   final handler = ref.read(playerProvider);
-  if (handler.cache.progress.value != null) {
+  if (handler.downloadQueue.busy || handler.cache.progress.value != null) {
     await runAction(context, () async {
       throw const MusicError('已有歌曲正在下载，请稍候');
     });

@@ -43,7 +43,7 @@ class MemoryDownloads extends AudioCache {
 
   @override
   Future<void> cancel() async {
-    progress.value = null;
+    clearProgress();
   }
 }
 
@@ -108,15 +108,16 @@ void main() {
         expect(player.loadedUri!.scheme, 'file');
         expect(api.streamRequests, isEmpty);
         expect(tester.takeException(), isNull);
-        cache.progress.value = SongDownloadProgress(
-          'anonymous',
-          fixtureSong(2),
-          512,
-          1024,
+        cache.report(
+          SongDownloadProgress('anonymous', fixtureSong(2), 512, 1024),
+        );
+        cache.report(
+          SongDownloadProgress('anonymous', fixtureSong(3), 256, 1024),
         );
         await tester.pump();
-        await tester.ensureVisible(find.byTooltip('取消下载'));
-        await tester.tap(find.byTooltip('取消下载'));
+        expect(find.byTooltip('取消下载'), findsNWidgets(2));
+        await tester.ensureVisible(find.byTooltip('取消下载').first);
+        await tester.tap(find.byTooltip('取消下载').first);
         await tester.pumpAndSettle();
         expect(cache.progress.value, isNull);
         await tester.ensureVisible(find.byTooltip('删除歌曲 1的下载'));
@@ -131,6 +132,32 @@ void main() {
         await tester.tap(find.text('下载设置'));
         await tester.pumpAndSettle();
         expect(find.byType(DownloadSettingsPage), findsOneWidget);
+        for (final selection in [
+          ('同时下载歌曲数', '5 首', 'downloadConcurrent', 5),
+          ('每首下载连接数', '4 个连接', 'downloadConnections', 4),
+          ('下载总限速', '512 KB/s', 'downloadSpeedKiB', 512),
+          ('网络失败自动重试', '3 次', 'downloadRetries', 3),
+        ]) {
+          await tester.scrollUntilVisible(
+            find.text(selection.$1).hitTestable(),
+            160,
+          );
+          await tester.tap(find.text(selection.$1));
+          await tester.pumpAndSettle();
+          await tester.scrollUntilVisible(
+            find.text(selection.$2).hitTestable(),
+            120,
+            scrollable: find.byType(Scrollable).last,
+          );
+          await tester.tap(find.text(selection.$2));
+          await tester.pumpAndSettle();
+          expect(prefs.getInt(selection.$3), selection.$4);
+        }
+
+        await tester.scrollUntilVisible(
+          find.text('高品质 MP3').hitTestable(),
+          200,
+        );
         expect(find.text('下载音质'), findsOneWidget);
         await tester.tap(find.text('高品质 MP3'));
         await tester.pumpAndSettle();
@@ -154,7 +181,10 @@ void main() {
             findsNothing,
           );
         }
-        await tester.ensureVisible(find.text('同时下载 LRC 歌词'));
+        await tester.scrollUntilVisible(
+          find.text('同时下载 LRC 歌词').hitTestable(),
+          160,
+        );
         await tester.tap(find.text('同时下载 LRC 歌词'));
         await tester.pumpAndSettle();
         expect(prefs.getBool('downloadLyrics'), true);
@@ -178,7 +208,7 @@ void main() {
         );
         expect(
           find.ancestor(
-            of: find.text('下载空间上限'),
+            of: find.text('私有存储空间上限'),
             matching: find.byType(AppSectionCard),
           ),
           findsNothing,
