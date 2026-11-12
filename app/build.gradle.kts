@@ -13,8 +13,8 @@ android {
         applicationId = "com.green.music"
         minSdk = 24
         targetSdk = 36
-        versionCode = 50
-        versionName = "1.2.18"
+        versionCode = 51
+        versionName = "1.2.19"
         ndk { abiFilters += "arm64-v8a" }
     }
     val signingRoot = rootProject.file(".local/signing")

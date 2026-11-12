@@ -101,7 +101,7 @@ class AuthService(val api: MusicApi, private val secrets: SecretStore) {
         loginWork = currentCoroutineContext()[Job]
         val candidate = musicSessionFromWebCookies(raw)
         val verified = profile(candidate)
-        if (generation != epoch || !save(verified, generation)) return false
+        if (generation != epoch || !save(verified, generation, recoverUnreadable = true)) return false
         api.session = verified; identity.value = verified; restoreError.value = null
         loginWork = null
         return true
@@ -255,7 +255,7 @@ class AuthService(val api: MusicApi, private val secrets: SecretStore) {
                 else -> throw MusicError("QQ 扫码失败（服务码 ${args[0]}）")
             }
         }
-        if (!q.active || q.epoch != epoch || !save(result, q.epoch)) return false
+        if (!q.active || q.epoch != epoch || !save(result, q.epoch, recoverUnreadable = true)) return false
         api.session = result; identity.value = result; restoreError.value = null; q.active = false; qr = null; loginWork = null
         return true
     }
