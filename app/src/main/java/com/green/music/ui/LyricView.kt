@@ -44,10 +44,11 @@ internal fun lyricWheelProjection(height:Float,density:Float,distance:Float,sing
 }
 @Composable fun MiniLyricText(song:Song,single:Boolean=false,preview:Boolean=false) {
     val ui=LocalUi.current;val p=ui.app.playback;val state by p.state.collectAsState();val pos by p.position.collectAsStateWithLifecycle(minActiveState=Lifecycle.State.RESUMED)
+    val center=!single&&ui.app.settings.lyrics().center
     var data by remember(song.id){mutableStateOf<List<LyricLine>?>(null)};var error by remember(song.id){mutableStateOf(false)};var retry by remember {mutableIntStateOf(0)}
     LaunchedEffect(song.id,song.mid,retry){error=false;try {data=p.lyrics(song,retry>0).filter{it.text.isNotBlank()}}catch(e:CancellationException){throw e}catch(_:Exception){error=true}}
     val lines=data;val status=when{state.loading&&!preview->"正在加载歌曲…";error->if(single)"歌词暂不可用" else "歌词加载失败，点按重试";lines==null->"正在加载歌词…";lines.isEmpty()->"暂无同步歌词";else->null}
-    if(status!=null){Box(Modifier.fillMaxSize().then(if(error&&!single)Modifier.quietClick{retry++}else Modifier),contentAlignment=if(single)Alignment.CenterStart else Alignment.Center){Text(status,style=if(single)MaterialTheme.typography.bodySmall else MaterialTheme.typography.bodyLarge,maxLines=1,overflow=TextOverflow.Ellipsis)};return}
+    if(status!=null){Box(Modifier.fillMaxSize().then(if(error&&!single)Modifier.quietClick{retry++}else Modifier),contentAlignment=if(single)Alignment.CenterStart else Alignment.Center){Text(status,Modifier.fillMaxWidth(),style=if(single)MaterialTheme.typography.bodySmall else MaterialTheme.typography.bodyLarge,textAlign=if(center)TextAlign.Center else TextAlign.Start,maxLines=1,overflow=TextOverflow.Ellipsis)};return}
     val index=lyricIndex(lines!!,if(preview)0 else pos);val reduced=reducedMotion();val translated=lines.any {it.translation.isNotEmpty()}
     val context=LocalContext.current;val highContrast=android.provider.Settings.Secure.getInt(context.contentResolver,"high_text_contrast_enabled",0)==1
     BoxWithConstraints(Modifier.fillMaxSize().clipToBounds()) {
@@ -64,10 +65,10 @@ internal fun lyricWheelProjection(height:Float,density:Float,distance:Float,sing
                 val canvas=drawContext.canvas.nativeCanvas;canvas.save()
                 canvas.translate(size.width/2,maxHeight.toPx()/2);canvas.concat(projection);canvas.translate(-size.width/2,-size.height/2)
                 drawContent();canvas.restore()
-            }.then(if(!single&&!highContrast)Modifier.lyricBlur((.7f*(1-amount)).dp,Triple(line?.text,amount,LocalContentColor.current))else Modifier),contentAlignment=Alignment.CenterStart) {
-                Column {Text(text,maxLines=1,overflow=TextOverflow.Ellipsis,fontSize=(if(single)12f else 14+2*amount).sp,lineHeight=(if(single)16.8f else (14+2*amount)*(if(translated)1.2f else 1.5f)).sp,
+            }.then(if(!single&&!highContrast)Modifier.lyricBlur((.7f*(1-amount)).dp,Triple(line?.text,amount,LocalContentColor.current))else Modifier),contentAlignment=if(center)Alignment.Center else Alignment.CenterStart) {
+                Column(Modifier.fillMaxWidth(),horizontalAlignment=if(center)Alignment.CenterHorizontally else Alignment.Start) {Text(text,Modifier.fillMaxWidth(),textAlign=if(center)TextAlign.Center else TextAlign.Start,maxLines=1,overflow=TextOverflow.Ellipsis,fontSize=(if(single)12f else 14+2*amount).sp,lineHeight=(if(single)16.8f else (14+2*amount)*(if(translated)1.2f else 1.5f)).sp,
                     fontWeight=FontWeight(if(single)(400+LocalWeightDelta.current).coerceIn(100,900) else ((400+LocalWeightDelta.current).coerceIn(100,900)*(1-amount)+600*amount).roundToInt()),color=if(single)MaterialTheme.colorScheme.onSurfaceVariant else lerp(MaterialTheme.colorScheme.onSurfaceVariant,MaterialTheme.colorScheme.onSurface,amount))
-                    if(!single&&translated)Text(line?.translation.orEmpty(),maxLines=1,overflow=TextOverflow.Ellipsis,fontSize=12.sp,lineHeight=12.sp,color=MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha=amount))
+                    if(!single&&translated)Text(line?.translation.orEmpty(),Modifier.fillMaxWidth(),textAlign=if(center)TextAlign.Center else TextAlign.Start,maxLines=1,overflow=TextOverflow.Ellipsis,fontSize=12.sp,lineHeight=12.sp,color=MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha=amount))
                 }
             }
         }

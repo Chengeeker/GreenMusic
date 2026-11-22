@@ -139,7 +139,7 @@ import kotlin.math.*
     val inFlight=LocalMiniPlayerInFlight.current
     val layer=rememberGraphicsLayer()
     val dark=LocalReviewColors.current.dark
-    val glassEnabled=ui.app.settings.bool("liquidGlass")&&activePage&&ui.playerFlight==null
+    val glassEnabled=ui.app.settings.bool("liquidGlass")&&ui.playerFlight?.closing!=false
     val glassText=if(glassEnabled)miniPlayerGlassTextColor(dark)else MaterialTheme.colorScheme.onSurface
     val glassSecondary=if(glassEnabled)glassText.copy(alpha=.9f)else MaterialTheme.colorScheme.onSurfaceVariant
     val scope=rememberCoroutineScope()
