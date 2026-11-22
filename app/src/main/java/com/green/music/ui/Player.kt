@@ -11,6 +11,7 @@ import androidx.compose.foundation.gestures.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.*
@@ -36,6 +37,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.Lifecycle
 import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.*
 import androidx.compose.ui.text.font.FontWeight
@@ -136,6 +138,52 @@ import kotlin.math.*
     val route=LocalRouteId.current
     val inFlight=LocalMiniPlayerInFlight.current
     val layer=rememberGraphicsLayer()
+    val dark=LocalReviewColors.current.dark
+    val glassEnabled=ui.app.settings.bool("liquidGlass")&&activePage&&ui.playerFlight==null
+    val glassText=if(glassEnabled)miniPlayerGlassTextColor(dark)else MaterialTheme.colorScheme.onSurface
+    val glassSecondary=if(glassEnabled)glassText.copy(alpha=.9f)else MaterialTheme.colorScheme.onSurfaceVariant
+    val scope=rememberCoroutineScope()
+    val screenHeight=LocalConfiguration.current.screenHeightDp.dp
+    var showInlineQueue by remember { mutableStateOf(false) }
+    BackHandler(showInlineQueue) { showInlineQueue=false }
+    var dismissDrag by remember { mutableFloatStateOf(0f) }
+    var restoreJob by remember { mutableStateOf<Job?>(null) }
+    fun springBack() {
+        restoreJob?.cancel()
+        restoreJob=scope.launch { Animatable(dismissDrag).animateTo(0f,tween(160)){dismissDrag=value} }
+    }
+    val miniDismiss=Modifier.pointerInput(Unit) {
+        val touchSlop=7.dp.toPx();val dismissThreshold=14.dp.toPx();val minimumFling=550.dp.toPx()
+        val barHeight=72.dp.toPx()
+        awaitEachGesture {
+            val down=awaitFirstDown(requireUnconsumed=false,pass=PointerEventPass.Initial)
+            if(down.position.y<size.height-barHeight) {
+                do { val event=awaitPointerEvent(PointerEventPass.Initial) } while(event.changes.any{it.pressed})
+                return@awaitEachGesture
+            }
+            val tracker=VelocityTracker().apply{addPosition(down.uptimeMillis,down.position)}
+            var vertical=false;var horizontal=false;var completed=false
+            do {
+                val event=awaitPointerEvent(PointerEventPass.Initial)
+                val change=event.changes.firstOrNull{it.id==down.id} ?: break
+                tracker.addPosition(change.uptimeMillis,change.position)
+                val dx=change.position.x-down.position.x;val dy=change.position.y-down.position.y
+                if(!vertical&&!horizontal) when {
+                    dy>touchSlop&&dy>abs(dx)*1.05f->{vertical=true;restoreJob?.cancel()}
+                    abs(dx)>touchSlop&&abs(dx)>abs(dy)*1.45f->horizontal=true
+                }
+                if(vertical){dismissDrag=(dy.coerceAtLeast(0f)*.65f).coerceAtMost(44.dp.toPx());change.consume()}
+                if(!change.pressed){
+                    completed=true
+                    val dismiss=vertical&&dy>0&&dy>abs(dx)*1.05f&&(dy>=dismissThreshold||dy>=dismissThreshold*.55f&&tracker.calculateVelocity().y>=minimumFling)
+                    if(dismiss){showInlineQueue=false;dismissDrag=0f;ui.haptic();ui.miniPlayerDismissed=true}
+                    else if(dismissDrag>0f)springBack()
+                    break
+                }
+            } while(true)
+            if(!completed&&vertical&&dismissDrag>0f)springBack()
+        }
+    }
     if(route!=null)DisposableEffect(route,layer){onDispose {
         if(ui.miniPlayerAnchors[route]?.layer===layer)ui.miniPlayerAnchors.remove(route)
     }}
@@ -143,12 +191,48 @@ import kotlin.math.*
         layer.record {this@drawWithContent.drawContent()}
         if(!inFlight)drawLayer(layer)
     }
-    Surface(Modifier.padding(start=12.dp,end=12.dp,top=4.dp,bottom=6.dp).onGloballyPositioned {
+    Box(Modifier.fillMaxWidth().then(miniDismiss)) { Surface(Modifier.padding(start=12.dp,end=12.dp,top=4.dp,bottom=6.dp).graphicsLayer { translationY=dismissDrag }.onGloballyPositioned {
         if(activePage)ui.playerStart["surface"]=it.boundsInRoot()
         if(route!=null)ui.miniPlayerAnchors[route]=MiniPlayerAnchor(layer,it.positionInRoot().y)
-    }.then(shared).then(if(inFlight)Modifier.clearAndSetSemantics {}else Modifier),shape=RoundedCornerShape(24.dp),color=MaterialTheme.colorScheme.surfaceContainerHigh) {
+    }.then(shared).then(if(inFlight)Modifier.clearAndSetSemantics {}else Modifier),shape=RoundedCornerShape(24.dp),color=if(glassEnabled)Color.Transparent else MaterialTheme.colorScheme.surfaceContainerHigh,contentColor=glassText,shadowElevation=if(glassEnabled)5.dp else 0.dp) {
+        Box {
+        if(glassEnabled)MiniPlayerGlassBackground(Modifier.matchParentSize(),ui.app.settings.bool("translucentNavigationGlass"))
         CompositionLocalProvider(LocalPageActive provides (activePage&&!inFlight)) {
-        Column {Row(verticalAlignment=Alignment.CenterVertically) {
+        Column {
+            AnimatedVisibility(showInlineQueue) {
+                val queueHeight=minOf(42.dp+52.dp*state.songs.size.coerceIn(0,50),(screenHeight*.5f-84.dp).coerceAtLeast(42.dp))
+                Column(Modifier.fillMaxWidth().height(queueHeight)) {
+                    Row(Modifier.fillMaxWidth().height(42.dp).padding(horizontal=14.dp),verticalAlignment=Alignment.CenterVertically) {
+                        Text("播放队列 · ${state.songs.size}首",style=MaterialTheme.typography.labelMedium,color=glassSecondary)
+                        Spacer(Modifier.weight(1f))
+                        IconButton(onClick=hapticClick{showInlineQueue=false},modifier=Modifier.size(36.dp)) { Icon(Icons.Rounded.Close,"收起播放队列",Modifier.size(18.dp)) }
+                    }
+                    HorizontalDivider(thickness=.5.dp,color=MaterialTheme.colorScheme.outlineVariant.copy(alpha=.35f))
+                    LazyColumn(Modifier.fillMaxWidth().weight(1f),state=rememberLazyListState(state.index.coerceAtLeast(0))) {
+                        itemsIndexed(state.songs,key={index,item->"${item.id}-$index"}) { index,item ->
+                            Row(Modifier.fillMaxWidth().height(52.dp).clip(RoundedCornerShape(13.dp))
+                                .background(if(index==state.index)MaterialTheme.colorScheme.primary.copy(alpha=.08f) else Color.Transparent)
+                                .quietClick { showInlineQueue=false;ui.run { p.select(index) } }.padding(horizontal=10.dp),verticalAlignment=Alignment.CenterVertically) {
+                                Cover(item.cover,34.dp);Spacer(Modifier.width(9.dp));Column(Modifier.weight(1f)) {
+                                    Text(item.name,maxLines=1,overflow=TextOverflow.Ellipsis,style=MaterialTheme.typography.bodySmall,fontWeight=if(index==state.index)FontWeight.SemiBold else FontWeight.Medium)
+                                    Text(item.artistNames,maxLines=1,overflow=TextOverflow.Ellipsis,style=MaterialTheme.typography.labelSmall,color=glassSecondary)
+                                }
+                                if(index==state.index)Icon(Icons.Rounded.GraphicEq,"正在播放",Modifier.size(17.dp),tint=MaterialTheme.colorScheme.primary)
+                            }
+                        }
+                    }
+                }
+            }
+            if(ui.miniPlayerDismissed) {
+                Row(Modifier.fillMaxWidth().height(66.dp).quietClick { ui.miniPlayerDismissed=false }.padding(horizontal=16.dp),verticalAlignment=Alignment.CenterVertically) {
+                    Icon(Icons.Rounded.MusicNote,"恢复播放器",Modifier.size(24.dp),tint=MaterialTheme.colorScheme.primary)
+                    Spacer(Modifier.width(12.dp));Column(Modifier.weight(1f)) {
+                        Text("音乐仍在播放",style=MaterialTheme.typography.titleSmall,maxLines=1)
+                        Text("点按恢复迷你播放器",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant,maxLines=1)
+                    }
+                    Icon(Icons.Rounded.KeyboardArrowUp,"恢复播放器")
+                }
+            } else Row(verticalAlignment=Alignment.CenterVertically) {
             val rowHeight=(maxOf(42f,36.8f*LocalDensity.current.fontScale)+24).dp
             val track:@Composable (Song,Boolean)->Unit={shown,preview->
                 Row(Modifier.fillMaxSize().quietClick {ui.openPlayer()}.padding(12.dp),verticalAlignment=Alignment.CenterVertically) {
@@ -161,12 +245,12 @@ import kotlin.math.*
             SwipeFrame(Triple(song,song.mid,state.index),{activePage&&!inFlight&&state.songs.size>1},{step->ui.run {p.select(if(step>0)nextIndex else Math.floorMod(state.index-1,state.songs.size))}},Modifier.weight(1f).height(rowHeight),outgoingContent={old->track((old as Triple<*,*,*>).first as Song,true)}) {step->
                 track(state.songs[if(step>0)nextIndex else Math.floorMod(state.index+step,state.songs.size)],step!=0)
             }
-            PlayButton(true);ActionIcon(Icons.Rounded.QueueMusic,"播放队列"){showQueue(ui)};Spacer(Modifier.width(4.dp))
-        };val position by p.position.collectAsStateWithLifecycle(minActiveState=Lifecycle.State.RESUMED);val duration by p.duration.collectAsState()
-            LinearProgressIndicator(progress={if(duration>0)(position.toFloat()/duration).coerceIn(0f,1f)else 0f},modifier=Modifier.fillMaxWidth().height(2.dp),trackColor=Color.Transparent,drawStopIndicator={},gapSize=0.dp,strokeCap=StrokeCap.Butt)
+            PlayButton(true);ActionIcon(Icons.Rounded.QueueMusic,"播放队列"){showInlineQueue=!showInlineQueue};Spacer(Modifier.width(4.dp))
         }
         }
-    }
+        }
+        }
+    } }
 }
 @Composable fun PlayerScreen() {
     val ui=LocalUi.current;val p=ui.app.playback;val state by p.state.collectAsState();val song=state.current
@@ -219,13 +303,17 @@ import kotlin.math.*
         if(active)Box(Modifier.size(48.dp).quietClick{ui.run{ui.app.downloads.cancelAll()}}.semantics{contentDescription=if(tasks.size>1)"取消全部下载"else "取消下载"},contentAlignment=Alignment.Center){CircularProgressIndicator(Modifier.size(24.dp),strokeWidth=2.dp,strokeCap=androidx.compose.ui.graphics.StrokeCap.Square);Icon(Icons.Rounded.Close,null,Modifier.size(14.dp))}
         else ActionIcon(if(local)Icons.Rounded.DownloadDone else Icons.Rounded.Download,if(local)"已下载到本机"else "下载歌曲",enabled=!local){downloadChoice(ui,song)}
         ActionIcon(Icons.Rounded.QueueMusic,"播放队列（${state.songs.size}首）"){showQueue(ui)}
-        ActionIcon(Icons.Rounded.MoreHoriz,"歌曲操作"){songActions(ui,song,onQuality={choosePlaybackQuality(ui)})}
+        ActionIcon(Icons.Rounded.MoreHoriz,"歌曲操作"){songActions(ui,song,onQuality={choosePlaybackQuality(ui)},onSpeed={choosePlaybackSpeed(ui)})}
     }
 }
 fun choosePlaybackQuality(ui:Ui) {ui.showSheet(.75f){Column(Modifier.navigationBarsPadding().verticalScroll(rememberScrollState()).padding(top=8.dp,bottom=16.dp)) {
     Text("播放音质",Modifier.padding(start=16.dp,top=8.dp,end=16.dp,bottom=8.dp),style=MaterialTheme.typography.titleLarge)
     listOf("standard","exhigh","lossless").forEach{quality->ChoiceRow(qualityName(quality),quality==ui.app.settings.string("quality","standard")){ui.run{ui.app.settings.put("quality",quality);ui.sheet=null}}}
     Text("从下次加载生效；当前歌曲保留现有音质，权限不足时自动降级。",Modifier.padding(start=16.dp,top=8.dp,end=16.dp))
+}}}
+fun choosePlaybackSpeed(ui:Ui) {val p=ui.app.playback;val speed=p.state.value.speed;ui.showSheet(.5f){Column(Modifier.navigationBarsPadding().verticalScroll(rememberScrollState()).padding(top=8.dp,bottom=16.dp)) {
+    Text("播放速度",Modifier.padding(start=16.dp,top=8.dp,end=16.dp,bottom=8.dp),style=MaterialTheme.typography.titleLarge)
+    listOf(.5f,.75f,1f,1.25f,1.5f,2f).forEach { value -> ChoiceRow("${value}×",speed==value){ui.sheet=null;ui.run { p.speed(value) } } }
 }}}
 fun showQueue(ui:Ui) {ui.showSheet(.65f){val state by ui.app.playback.state.collectAsState();Column(Modifier.navigationBarsPadding().height((androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp*.65f).dp)) {
     Row(Modifier.padding(start=20.dp,end=8.dp,bottom=8.dp),verticalAlignment=Alignment.CenterVertically){Text("播放队列 · ${state.songs.size}",Modifier.weight(1f),style=MaterialTheme.typography.titleLarge);ActionIcon(Icons.Rounded.Stop,"停止播放"){ui.run {ui.app.playback.stop()}}}

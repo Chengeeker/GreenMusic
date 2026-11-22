@@ -163,10 +163,11 @@ import kotlinx.coroutines.*
     }}}
 }
 
-fun songActions(ui: Ui, song: Song, list: MusicList?=null, onQuality:(()->Unit)?=null, changed: ()->Unit={}) {
+fun songActions(ui: Ui, song: Song, list: MusicList?=null, onQuality:(()->Unit)?=null, onSpeed:(()->Unit)?=null, changed: ()->Unit={}) {
     ui.showSheet(1f){Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).navigationBarsPadding()) {
         ListRow(song.name,song.artistNames,enabled=false,leading={Cover(song.cover)})
         if(onQuality!=null)ListRow("播放音质",icon=Icons.Outlined.HighQuality,trailing={}){ui.sheet=null;onQuality()}
+        if(onSpeed!=null)ListRow("播放速度",icon=Icons.Rounded.Speed,trailing={}){ui.sheet=null;onSpeed()}
         ListRow("加入播放队列",icon=Icons.Rounded.PlaylistAdd,trailing={}){ui.sheet=null;ui.run("已加入播放队列"){ui.app.playback.add(song)}}
         ListRow("下载歌曲",icon=Icons.Outlined.Download,trailing={}){ui.sheet=null;downloadChoice(ui,song)}
         ListRow("喜欢 / 取消喜欢",icon=Icons.Rounded.FavoriteBorder,trailing={}){ui.sheet=null;ui.run("喜欢状态已更新"){val liked=ui.app.api.songLiked(song);ui.app.api.likeSong(song,!liked);changed()}}

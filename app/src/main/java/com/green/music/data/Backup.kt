@@ -28,7 +28,7 @@ object BackupFormat {
         "queueIndex" to -1..100000, "position" to 0..86400000, "repeat" to 0..3, "cacheLimitMb" to 128..16384,
         "downloadConcurrent" to 1..5, "downloadConnections" to 1..4, "downloadSpeedKiB" to 0..10240, "downloadRetries" to 0..3,
         "lyricFontSize" to 16..40, "lyricFontWeight" to 100..900, "lyricKaraoke" to 0..3)
-    val strings = setOf("quality", "downloadQuality", "queue", "history", "webdavUrl", "webdavUsername", "webdavDirectory")
+    val strings = setOf("quality", "downloadQuality", "queue", "history", "webdavUrl", "webdavUsername", "webdavDirectory", "miniPlayerRecovery")
     val keys = bools + ranges.keys + strings + "appTextScale"
     fun validate(backup: Json): Map<String, Any> {
         if (backup.text("app") != "greenmusic" || backup.number("schema") != 1L || backup.text("backup_mode") !in listOf("safe", "full") || backup.optJSONObject("preferences") == null)
@@ -47,6 +47,7 @@ object BackupFormat {
             if (key == "downloadConnections" && (value as Number).toInt() !in listOf(1,2,4)) throw MusicError("备份下载连接数无效")
             if (key == "lyricFontWeight" && (value as Number).toInt() % 100 != 0) throw MusicError("备份歌词字重无效")
             if (key in listOf("quality", "downloadQuality") && value !in listOf("standard", "exhigh", "lossless")) throw MusicError("备份选项无效")
+            if (key == "miniPlayerRecovery" && value !in listOf("manual", "track", "resume")) throw MusicError("迷你播放器恢复选项无效")
             if (key in listOf("queue", "history")) {
                 val array = try { JSONArray(value as String) } catch (_: Exception) { throw MusicError("备份播放记录格式无效") }
                 if (array.length() > 100000 || (0 until array.length()).any { i -> array.optJSONObject(i)?.let { !Song.parse(it).valid } != false }) throw MusicError("备份歌曲记录无效")

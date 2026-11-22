@@ -45,7 +45,18 @@ import kotlinx.coroutines.*
     var bottomHeight by remember {mutableStateOf(0.dp)}
     val floating=ui.app.settings.bool("floatingNav",true)
     val layer=rememberGraphicsLayer();val backdrop=remember {Backdrop(layer)}
-    ReviewPage(listOf("发现","搜索","我的")[index],back=false) { insets ->
+    ReviewPage(listOf("发现","搜索","我的")[index],back=false,overlay={
+        CompositionLocalProvider(LocalBackdrop provides backdrop) {
+            Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().onSizeChanged {bottomHeight=with(density){it.height.toDp()}}.then(if(floating||miniInFlight)Modifier else Modifier.background(LocalReviewColors.current.nav))) {
+                MiniPlayer()
+                Box(Modifier.graphicsLayer {alpha=if(miniInFlight)0f else 1f}.then(if(miniInFlight)Modifier.clearAndSetSemantics {}else Modifier)) {
+                    CompositionLocalProvider(LocalBackdrop provides backdrop,LocalPageActive provides (parentActive&&!miniInFlight)) {
+                        ReviewNavigation(index){if(it !in visited){initialPositions[it]=if(it>index)1f else -1f;visited+=it};index=it}
+                    }
+                }
+            }
+        }
+    }) { insets ->
         BoxWithConstraints(Modifier.fillMaxSize().clipToBounds()) {
             val width=constraints.maxWidth.toFloat()
             Box(Modifier.fillMaxSize().padding(bottom=if(floating)0.dp else bottomHeight).recordBackdrop(backdrop)){visited.forEach {tab->key(tab) {
@@ -58,14 +69,6 @@ import kotlinx.coroutines.*
                     }
                 }
             }}
-            }
-            Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().onSizeChanged {bottomHeight=with(density){it.height.toDp()}}.then(if(floating||miniInFlight)Modifier else Modifier.background(LocalReviewColors.current.nav))) {
-                MiniPlayer()
-                Box(Modifier.graphicsLayer {alpha=if(miniInFlight)0f else 1f}.then(if(miniInFlight)Modifier.clearAndSetSemantics {}else Modifier)) {
-                    CompositionLocalProvider(LocalBackdrop provides backdrop,LocalPageActive provides (parentActive&&!miniInFlight)) {
-                        ReviewNavigation(index){if(it !in visited){initialPositions[it]=if(it>index)1f else -1f;visited+=it};index=it}
-                    }
-                }
             }
         }
     }

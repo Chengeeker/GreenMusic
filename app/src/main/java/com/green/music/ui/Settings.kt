@@ -81,8 +81,8 @@ import com.green.music.data.*
             onCommit = { value -> ui.run { p.putAll(mapOf("fontWeightDelta" to value, "customFontWeight" to true)) } })
         Spacer(Modifier.height(16.dp));FontSizeSetting(p.float("appTextScale")) { value -> ui.run { p.put("appTextScale", value) } }
         Spacer(Modifier.height(16.dp));AppearanceSection("底部导航") {ToggleRow("使用悬浮底栏","居中显示悬浮式导航栏",p.bool("floatingNav",true),icon=Icons.Rounded.Dock,iconTint=MaterialTheme.colorScheme.primary){ui.run{p.put("floatingNav",it)}}}
-        Spacer(Modifier.height(16.dp));AppearanceSection("显示效果") {ToggleRow("使用液态玻璃效果","控制液态玻璃控件；当前应用于悬浮底栏",p.bool("liquidGlass"),icon=Icons.Rounded.BlurOn,iconTint=MaterialTheme.colorScheme.primary){ui.run{p.put("liquidGlass",it)}}
-            if(p.bool("liquidGlass") && p.bool("floatingNav", true)) NavigationGlassChoice(p.bool("translucentNavigationGlass", false), hapticsEnabled = p.bool("haptics", true)) { value -> ui.run { p.put("translucentNavigationGlass", value) } }
+        Spacer(Modifier.height(16.dp));AppearanceSection("显示效果") {ToggleRow("使用液态玻璃效果","控制悬浮底栏和迷你播放器的玻璃材质",p.bool("liquidGlass"),icon=Icons.Rounded.BlurOn,iconTint=MaterialTheme.colorScheme.primary){ui.run{p.put("liquidGlass",it)}}
+            if(p.bool("liquidGlass")) NavigationGlassChoice(p.bool("translucentNavigationGlass", false), hapticsEnabled = p.bool("haptics", true)) { value -> ui.run { p.put("translucentNavigationGlass", value) } }
         }
         Spacer(Modifier.height(16.dp));AppearanceSection("屏幕显示") {PreferenceRow("屏幕帧率设置",displayModeLabel(p.int("screenRefreshRateMode")),Icons.Rounded.Speed){ui.go(Screen("refreshRate"))}}
         Spacer(Modifier.height(16.dp));AppearanceSection("触感与震动") {ToggleRow("触感与震动反馈","按键、卡片点击、手势滑动与底栏切换的触感反馈",p.bool("haptics",true),icon=Icons.Rounded.Vibration,iconTint=MaterialTheme.colorScheme.primary){ui.run{p.put("haptics",it)}}}
@@ -113,8 +113,16 @@ fun displayModeLabel(mode:Int)=if(mode==0)"跟随系统" else "${if(mode<=4)"原
         FlutterSlider(value.toFloat(),{change(kotlin.math.round(it/step).toInt()*step)},valueRange=min.toFloat()..max.toFloat(),steps=(max-min)/step-1,onValueChangeFinished=save)}
 }
 @Composable fun PlaybackSettingsScreen() {
-    val ui=LocalUi.current;
-    SettingsBody("播放设置") {SettingsSectionCard {listOf("standard","exhigh","lossless").forEach{quality->ChoiceRow(qualityName(quality),ui.app.settings.string("quality","standard")==quality,if(quality=="standard")"匿名可用音源优先" else "需要账号及相应权限；不可用时降级"){ui.run{ui.app.settings.put("quality",quality)}}}}}
+    val ui=LocalUi.current;val settings=ui.app.settings
+    SettingsBody("播放设置") {
+        SectionHeading("默认音质");SettingsSectionCard {listOf("standard","exhigh","lossless").forEach{quality->ChoiceRow(qualityName(quality),settings.string("quality","standard")==quality,if(quality=="standard")"匿名可用音源优先" else "需要账号及相应权限；不可用时降级"){ui.run{settings.put("quality",quality)}}}}
+        Spacer(Modifier.height(24.dp));SectionHeading("迷你播放器收起后恢复")
+        SettingsSectionCard {
+            listOf("manual" to ("手动恢复" to "收起后保持隐藏，可点播放器占位恢复"),"track" to ("切歌时恢复" to "自动播放下一首或切换歌曲时重新显示"),"resume" to ("切歌或恢复播放时显示" to "切歌，或暂停后再次播放时重新显示")).forEach { (key,copy) ->
+                ChoiceRow(copy.first,settings.string("miniPlayerRecovery","manual")==key,copy.second){ui.run{settings.put("miniPlayerRecovery",key)}}
+            }
+        }
+    }
 }
 @Composable fun DownloadSettingsScreen() {
     val ui=LocalUi.current;val p=ui.app.settings

@@ -20,6 +20,8 @@ import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.*
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
@@ -29,7 +31,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.onClick
+import androidx.compose.ui.semantics.role
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.LifecycleOwner
@@ -53,12 +62,19 @@ class Screen(val kind: String, val title: String = "", val data: Any? = null,
 }
 class Ui(val app: MusicApplication, val activity: androidx.activity.ComponentActivity, val scope: CoroutineScope) {
     val stack=mutableStateListOf(Screen("home"))
+    var miniPlayerDismissed by mutableStateOf(false)
+    var closingPlayer by mutableStateOf<Screen?>(null)
     internal val playerStart=mutableStateMapOf<String,androidx.compose.ui.geometry.Rect>()
     internal val playerEnd=mutableStateMapOf<String,androidx.compose.ui.geometry.Rect>()
     internal var miniTitleStyle=androidx.compose.ui.text.TextStyle.Default
     internal var playerFlight by mutableStateOf<PlayerFlight?>(null)
     internal val miniPlayerAnchors=mutableStateMapOf<Long,MiniPlayerAnchor>()
-    fun openPlayer(){if(stack.lastOrNull()?.kind=="player")return
+    fun openPlayer(){miniPlayerDismissed=false;if(stack.lastOrNull()?.kind=="player")return
+        closingPlayer?.let { screen ->
+            closingPlayer=null
+            if(backScreen==screen.id){backScreen=null;backProgress=0f}
+            if(screen !in stack){stack+=screen;return}
+        }
         val origin=playerStart["surface"]?.let {rect->PlayerOrigin(rect,playerStart["artwork"] ?: rect,playerStart["title"] ?: rect,miniTitleStyle)}
         playerEnd.clear()
         go(Screen("player",data=origin))
@@ -77,7 +93,7 @@ class Ui(val app: MusicApplication, val activity: androidx.activity.ComponentAct
     private var lastHaptic=0L
     fun haptic(){val now=android.os.SystemClock.uptimeMillis();if(app.settings.bool("haptics",true)&&now-lastHaptic>=40){lastHaptic=now;activity.window.decorView.performHapticFeedback(android.view.HapticFeedbackConstants.VIRTUAL_KEY)}}
     fun go(screen: Screen) { stack+=screen }
-    fun back() { if(sheet!=null)sheet=null else if(dialog!=null)dialog=null else if(stack.size>1)stack.removeAt(stack.lastIndex) }
+    fun back() { if(sheet!=null)sheet=null else if(dialog!=null)dialog=null else if(stack.size>1){stack.last().takeIf { it.kind=="player" }?.let { closingPlayer=it };stack.removeAt(stack.lastIndex)} }
     fun message(text: String) { toast=text; toastJob?.cancel(); toastJob=scope.launch { delay(2600); toast=null } }
     fun run(success: String?=null, work: suspend ()->Unit): Job = scope.launch {
         try { work(); if(success!=null)message(success) }
@@ -115,6 +131,17 @@ val LocalUi = staticCompositionLocalOf<Ui> { error("GreenMusic UI not initialize
     val initialized by app.initialized.collectAsState()
     val startupError by app.startupError.collectAsState()
     val player by app.playback.state.collectAsState()
+    var previousTrack by remember { mutableStateOf(player.current?.id) }
+    var previousPlaying by remember { mutableStateOf(player.playing) }
+    val recovery=app.settings.string("miniPlayerRecovery","manual")
+    LaunchedEffect(player.current?.id,player.playing,recovery) {
+        val changedTrack=player.current?.id!=previousTrack
+        val resumed=player.playing&&!previousPlaying
+        if(ui.miniPlayerDismissed && (recovery=="track"&&changedTrack || recovery=="resume"&&(changedTrack||resumed)))
+            ui.miniPlayerDismissed=false
+        previousTrack=player.current?.id
+        previousPlaying=player.playing
+    }
     val displayMode=app.settings.int("screenRefreshRateMode")
     LaunchedEffect(initialized,displayMode){if(initialized)try {activity.applyDisplayMode(displayMode)}catch(_:Exception){app.settings.put("screenRefreshRateMode",0)}}
     LaunchedEffect(startupError){startupError?.let(ui::message)}
@@ -164,6 +191,26 @@ val LocalUi = staticCompositionLocalOf<Ui> { error("GreenMusic UI not initialize
 
                     }
                     ui.playerFlight?.let{PlayerFlightOverlay(it)}
+                    ui.closingPlayer?.let { screen ->
+                        val bounds=(screen.data as? PlayerOrigin)?.surface
+                        if(bounds!=null){
+                            val density=LocalDensity.current
+                            Box(
+                                Modifier.offset(with(density){bounds.left.toDp()},with(density){bounds.top.toDp()})
+                                    .size(with(density){bounds.width.toDp()},with(density){bounds.height.toDp()})
+                                    .pointerInput(screen){awaitEachGesture {
+                                        val down=awaitFirstDown(requireUnconsumed=false,pass=PointerEventPass.Initial)
+                                        down.consume();ui.openPlayer()
+                                        do {val event=awaitPointerEvent(PointerEventPass.Initial);event.changes.forEach { it.consume() }} while(event.changes.any { it.pressed })
+                                    }}
+                                    .semantics {
+                                        role=Role.Button
+                                        contentDescription="立即重新打开播放器"
+                                        onClick { ui.openPlayer();true }
+                                    }
+                            )
+                        }
+                    }
                     AnimatedVisibility(ui.toast!=null,Modifier.align(Alignment.BottomCenter).imePadding().navigationBarsPadding().padding(horizontal=24.dp).padding(bottom=84.dp),enter=fadeIn(tween(100)),exit=fadeOut(tween(100))) {
                         var message by remember {mutableStateOf(ui.toast.orEmpty())};ui.toast?.let{message=it}
                         Surface(Modifier.widthIn(max=340.dp).semantics{liveRegion=LiveRegionMode.Polite},color=if(LocalReviewColors.current.dark)Color(0xFF2C2D35).copy(alpha=.96f)else Color(0xFF1E1E24).copy(alpha=.94f),shape=RoundedCornerShape(24.dp),shadowElevation=8.dp){Text(message,Modifier.padding(horizontal=18.dp,vertical=10.dp),color=Color.White,fontSize=13.5.sp,lineHeight=16.875.sp,fontWeight=FontWeight.W500,textAlign=TextAlign.Center)}
@@ -226,7 +273,7 @@ private class RetainedRoute(val screen:Screen) {
                 if(!present&&ui.backScreen==screen.id)offset.snapTo(ui.backProgress)
                 offset.animateTo(if(present)0f else 1f,tween(if(reduced)0 else if(present)if(origin!=null)360 else 320 else ((if(origin!=null)320 else 220)*(1-offset.value)).toInt(),easing=if(origin!=null)LinearEasing else if(present)CubicBezierEasing(.215f,.61f,.355f,1f)else CubicBezierEasing(.55f,.055f,.675f,.19f)))
                 if(ui.playerFlight?.offset===offset)ui.playerFlight=null
-                if(!present){retained.remove(route);if(ui.backScreen==screen.id){ui.backScreen=null;ui.backProgress=0f}}
+                if(!present){if(ui.closingPlayer===screen)ui.closingPlayer=null;retained.remove(route);if(ui.backScreen==screen.id){ui.backScreen=null;ui.backProgress=0f}}
             }
             val progress={if(ui.backScreen==screen.id)maxOf(ui.backProgress,offset.value)else offset.value}
             val inFlight=shared&&(route==upper||screen==lower)

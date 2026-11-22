@@ -6,6 +6,9 @@ import android.content.Intent
 import android.graphics.BitmapFactory
 import android.net.Uri
 import android.webkit.*
+import android.os.SystemClock
+import android.view.MotionEvent
+import android.view.View
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -76,21 +79,21 @@ import kotlinx.coroutines.*
     val generation=remember{ui.app.auth.beginWebLogin()}
     var webUnavailable by remember{mutableStateOf(false)}
     var web by remember{mutableStateOf<WebView?>(null)};var error by remember{mutableStateOf<String?>(null)};var loading by remember{mutableStateOf(true)}
-    var checking by remember{mutableStateOf(false)};var qqPending by remember{mutableStateOf(false)};var closing by remember{mutableStateOf(false)};var lastCookie by remember{mutableStateOf("")}
+    var checking by remember{mutableStateOf(false)};var qqPending by remember{mutableStateOf(false)};var closing by remember{mutableStateOf(false)};var importingCookie by remember{mutableStateOf(false)};var lastCookie by remember{mutableStateOf("")};var lastCookieCheckAt by remember{mutableLongStateOf(0L)}
     suspend fun check(raw:String?=null,manual:Boolean=false) {
-        if(checking||closing)return
+        if(checking||closing||(!manual&&importingCookie))return
         if(raw==null&&!isMusicWebUrl(web?.url.orEmpty())){if(manual)error="请先在 QQ 音乐官网完成登录；电脑已有登录态可点右上角导入 Cookie";return}
         val cookie=raw ?: CookieManager.getInstance().getCookie("https://y.qq.com/").orEmpty()
-        if(!manual&&cookie==lastCookie)return
+        if(!manual&&cookie==lastCookie&&SystemClock.elapsedRealtime()-lastCookieCheckAt<10_000)return
         try{musicSessionFromWebCookies(cookie)}catch(e:MusicError){if(manual)error=e.message;return}
-        checking=true;lastCookie=cookie
+        checking=true;lastCookie=cookie;lastCookieCheckAt=SystemClock.elapsedRealtime()
         try{if(ui.app.auth.importWebLoginCookies(cookie,generation)){closing=true;ui.back();if(ui.stack.lastOrNull()?.kind=="login")ui.back()}}
         catch(e:CancellationException){throw e}catch(e:Exception){error=e.message ?: "登录验证失败"}finally{checking=false}
     }
-    fun importCookie(){ui.dialog={var value by remember{mutableStateOf("")};ReviewDialog(onDismissRequest={ui.dialog=null},title={Text("导入 QQ 音乐 Cookie")},text={Column(Modifier.verticalScroll(rememberScrollState())){
+    fun importCookie(){importingCookie=true;ui.dialog={var value by remember{mutableStateOf("")};ReviewDialog(onDismissRequest={importingCookie=false;ui.dialog=null},title={Text("导入 QQ 音乐 Cookie")},text={Column(Modifier.verticalScroll(rememberScrollState())){
         Text("在电脑 QQ 音乐网页登录后，从开发者工具 Network 中复制 QQ 音乐请求头的 Cookie 值。验证通过后，仅加密保存音乐登录凭据。")
         Spacer(Modifier.height(16.dp));TextField(value,{if(it.length<=65536)value=it},Modifier.fillMaxWidth(),colors=flutterInputColors(),label={Text("Cookie")},placeholder={Text("粘贴 QQ 音乐网页 Cookie")},visualTransformation=PasswordVisualTransformation(),singleLine=true,keyboardOptions=KeyboardOptions(autoCorrectEnabled=false,keyboardType=KeyboardType.Password))
-    }},confirmButton={Button(hapticClick({ui.dialog=null;scope.launch{check(value.trim(),true)}})){Text("验证并导入")}},dismissButton={TextButton(hapticClick({ui.dialog=null})){Text("取消")}})} }
+    }},confirmButton={Button(hapticClick({ui.dialog=null;importingCookie=false;scope.launch{check(value.trim(),true)}})){Text("验证并导入")}},dismissButton={TextButton(hapticClick({importingCookie=false;ui.dialog=null})){Text("取消")}})} }
     val active=LocalPageActive.current
     LaunchedEffect(active){if(!active){closing=true;ui.app.auth.cancelLogin(generation);web?.stopLoading()}}
     val callbacks=remember {(ui.activity as? com.green.music.MainActivity)?.loginCallback ?: kotlinx.coroutines.flow.MutableStateFlow<String?>(null)}
@@ -98,7 +101,7 @@ import kotlinx.coroutines.*
     LaunchedEffect(callback){if(qqPending&&callback!=null){qqPending=false;qqWebCallbackUrl(callback!!)?.let{web?.loadUrl(it)};callbacks.value=null}}
     LaunchedEffect(Unit){lifecycle.lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED){while(true){delay(2000);check()}}}
     DisposableEffect(Unit){onDispose{closing=true;ui.app.auth.cancelLogin(generation);web?.apply{stopLoading();loadUrl("about:blank");clearHistory();destroy()};runCatching{CookieManager.getInstance().removeAllCookies(null);WebStorage.getInstance().deleteAllData()}}}
-    ReviewPage("网页登录",actions={ActionIcon(Icons.Rounded.Input,"导入 Cookie",!checking,action=::importCookie)}) {insets->Column(Modifier.fillMaxSize().padding(insets)) {
+    ReviewPage("网页登录",actions={ActionIcon(Icons.Rounded.Input,"导入 Cookie",!checking,action=::importCookie)},captureContent=false) {insets->Column(Modifier.fillMaxSize().padding(insets)) {
         Column(Modifier.heightIn(max=LocalConfiguration.current.screenHeightDp.dp*.28f).verticalScroll(rememberScrollState()).padding(start=16.dp,end=16.dp,top=12.dp,bottom=8.dp)){
             Text("在 QQ 音乐官网点击“登录”。电脑端已登录，可从右上角导入 Cookie。")
             error?.let{Text(it,Modifier.padding(top=8.dp),color=MaterialTheme.colorScheme.error)}
@@ -106,7 +109,10 @@ import kotlinx.coroutines.*
         if(loading||checking)LinearProgressIndicator(Modifier.fillMaxWidth(),strokeCap=androidx.compose.ui.graphics.StrokeCap.Butt,gapSize=0.dp,trackColor=MaterialTheme.colorScheme.secondaryContainer)
         Box(Modifier.weight(1f).fillMaxWidth()) {
             if(webUnavailable)Box(Modifier.fillMaxSize(),contentAlignment=Alignment.Center){Text("可导入电脑端 Cookie，或返回使用二维码登录",textAlign=TextAlign.Center)}
-            else AndroidView(factory={ctx->try{WebView(ctx).also {view->web=view
+            else AndroidView(factory={ctx->try{object:WebView(ctx){override fun onTouchEvent(event:MotionEvent):Boolean {
+                if(event.actionMasked==MotionEvent.ACTION_DOWN&&!hasFocus())requestFocus(View.FOCUS_DOWN)
+                return super.onTouchEvent(event)
+            }}.also {view->web=view;view.isFocusable=true;view.isFocusableInTouchMode=true
                 view.settings.apply{javaScriptEnabled=true;domStorageEnabled=true;allowFileAccess=false;allowContentAccess=false;mixedContentMode=WebSettings.MIXED_CONTENT_NEVER_ALLOW;useWideViewPort=true;loadWithOverviewMode=true;setSupportZoom(true)
                     userAgentString="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36"}
                 CookieManager.getInstance().setAcceptThirdPartyCookies(view,true)

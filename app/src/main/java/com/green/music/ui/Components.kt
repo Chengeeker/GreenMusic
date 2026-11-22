@@ -186,13 +186,19 @@ internal fun coverImageUrl(value: String): String {
     }
 }
 @Composable fun Loading() { Box(Modifier.fillMaxWidth().padding(24.dp),contentAlignment=Alignment.Center) { CircularProgressIndicator(Modifier.size(36.dp),strokeWidth=4.dp,strokeCap=androidx.compose.ui.graphics.StrokeCap.Square) } }
-@Composable fun ReviewPage(title: String, back: Boolean=true, actions: @Composable RowScope.()->Unit={}, content: @Composable (PaddingValues)->Unit) {
+@Composable fun ReviewPage(title: String, back: Boolean=true, actions: @Composable RowScope.()->Unit={}, overlay: @Composable BoxScope.()->Unit={}, captureContent:Boolean=true, content: @Composable (PaddingValues)->Unit) {
     val ui=LocalUi.current
     val layer=rememberGraphicsLayer();val backdrop=remember {Backdrop(layer)}
     Box(Modifier.fillMaxSize().background(LocalReviewColors.current.background)) {
         val top=WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
-        Box(Modifier.fillMaxSize().recordBackdrop(backdrop)) {CompositionLocalProvider(LocalBackdrop provides backdrop){content(PaddingValues(top=top+56.dp,bottom=WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()))}}
-        BackdropSurface(Modifier.fillMaxWidth().height(top+56.dp),backdrop)
+        val padding=PaddingValues(top=top+56.dp,bottom=WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding())
+        if(captureContent) {
+            Box(Modifier.fillMaxSize().recordBackdrop(backdrop)) {CompositionLocalProvider(LocalBackdrop provides backdrop){content(padding)}}
+            BackdropSurface(Modifier.fillMaxWidth().height(top+56.dp),backdrop)
+        } else {
+            Box(Modifier.fillMaxSize()) {content(padding)}
+            Box(Modifier.fillMaxWidth().height(top+56.dp).background(LocalReviewColors.current.appBar))
+        }
         Column(Modifier.fillMaxWidth().background(Brush.verticalGradient(listOf(LocalReviewColors.current.appBar.copy(alpha=.95f),LocalReviewColors.current.appBar.copy(alpha=0f)))).background(LocalReviewColors.current.appBar.copy(alpha=.45f)).statusBarsPadding()) {
             Row(Modifier.fillMaxWidth().height(56.dp),verticalAlignment=Alignment.CenterVertically) {
                 if(back) Box(Modifier.width(56.dp),contentAlignment=Alignment.Center){ActionIcon(Icons.AutoMirrored.Rounded.ArrowBack,"返回",action=ui::back)} else Spacer(Modifier.width(16.dp))
@@ -202,6 +208,7 @@ internal fun coverImageUrl(value: String): String {
             }
             HorizontalDivider(thickness=.5.dp,color=MaterialTheme.colorScheme.outlineVariant.copy(alpha=.24f))
         }
+        CompositionLocalProvider(LocalBackdrop provides backdrop) { overlay() }
     }
 }
 fun qualityName(value: String) = when(value) {"lossless"->"无损 FLAC";"exhigh"->"高品质 MP3";else->"标准 MP3"}
@@ -209,9 +216,8 @@ fun qualityName(value: String) = when(value) {"lossless"->"无损 FLAC";"exhigh"
 @Composable fun MusicPage(title:String,actions:@Composable RowScope.()->Unit={},content:@Composable (PaddingValues)->Unit) {
     val density=LocalDensity.current
     var miniHeight by remember {mutableIntStateOf(0)}
-    ReviewPage(title,actions=actions){insets->Box(Modifier.fillMaxSize()) {
-        content(PaddingValues(top=insets.calculateTopPadding(),bottom=insets.calculateBottomPadding()+with(density){miniHeight.toDp()}))
+    ReviewPage(title,actions=actions,overlay={
         Box(Modifier.align(Alignment.BottomCenter).navigationBarsPadding().onSizeChanged {miniHeight=it.height}) {MiniPlayer()}
-    }}
+    }){insets->content(PaddingValues(top=insets.calculateTopPadding(),bottom=insets.calculateBottomPadding()+with(density){miniHeight.toDp()}))}
 }
 @Composable internal fun flutterInputColors()=TextFieldDefaults.colors(focusedContainerColor=Color.Transparent,unfocusedContainerColor=Color.Transparent,disabledContainerColor=Color.Transparent)
